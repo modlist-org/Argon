@@ -1,0 +1,103 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Configurations>Debug_Mono;Release_Mono</Configurations>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AssemblyName>Argon</AssemblyName>
+    <RootNamespace>Argon</RootNamespace>
+    <Version>0.1.0</Version>
+    <GameData Condition="'$(GameData)' == ''">ADanceOfFireAndIce_Data</GameData>
+    <GameManagedPath Condition="'$(GameManagedPath)' == '' and '$(GamePath)' != ''">$(GamePath)/$(GameData)/Managed</GameManagedPath>
+    <O5KitProject Condition="'$(O5KitProject)' == ''">$(MSBuildThisFileDirectory)../O5Kit/src/O5Kit/O5Kit.csproj</O5KitProject>
+    <ModStageDir Condition="'$(ModStageDir)' == ''">$(MSBuildThisFileDirectory)dist/Argon</ModStageDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+    <ProjectReference Include="$(O5KitProject)" />
+    <!-- O5Kit's numeric input controls depend on this at runtime. -->
+    <PackageReference Include="NCalc" Version="7.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="UnityModManager">
+      <HintPath>$(GameManagedPath)/UnityModManager/UnityModManager.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameManagedPath)/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(GameManagedPath)/UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(GameManagedPath)/Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameManagedPath)/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(GameManagedPath)/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameManagedPath)/UnityModManager/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RDTools">
+      <HintPath>$(GameManagedPath)/RDTools.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SkyHook.Unity">
+      <HintPath>$(GameManagedPath)/SkyHook.Unity.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="StageModPackage" AfterTargets="Build">
+    <MakeDir Directories="$(ModStageDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModStageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)mod/Info.json" DestinationFolder="$(ModStageDir)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <_ModRuntimeDependency Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.dll'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ModRuntimeDependency)" DestinationFolder="$(ModStageDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="ValidateBuildPaths" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(GameManagedPath)' == ''" Text="Set GamePath/GameData or GameManagedPath before building Argon." />
+    <Error Condition="!Exists('$(GameManagedPath)/UnityModManager/UnityModManager.dll')" Text="UnityModManager.dll was not found under '$(GameManagedPath)'." />
+    <Error Condition="!Exists('$(O5KitProject)')" Text="O5Kit project was not found at '$(O5KitProject)'. Set O5KitProject to the local O5Kit.csproj path." />
+  </Target>
+</Project>

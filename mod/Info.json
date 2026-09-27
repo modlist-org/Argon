@@ -1,0 +1,10 @@
+{
+  "Id": "argon",
+  "DisplayName": "Argon",
+  "Author": "Argon contributors",
+  "Version": "0.1.0",
+  "ManagerVersion": "0.27.0",
+  "AssemblyName": "Argon.dll",
+  "EntryMethod": "Argon.ModEntryPoint.Load",
+  "HomePage": ""
+}

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Set these to the local ADOFAI and O5Kit checkouts. -->
+    <GamePath>/path/to/A Dance of Fire and Ice</GamePath>
+    <GameData>ADanceOfFireAndIce_Data</GameData>
+    <O5KitProject>/path/to/O5Kit/src/O5Kit/O5Kit.csproj</O5KitProject>
+  </PropertyGroup>
+</Project>
