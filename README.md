@@ -42,8 +42,8 @@ These checks do not launch ADOFAI and are not a substitute for in-game testing.
 
 ## Upstream references and notices
 
-- **JipperResourcePack (JRP)** — its BSD 3-Clause-licensed key-viewer layout definitions were used as the reference for the 10/12/16/20-key ordering, coordinates, key widths, and related layout values. Argon's C# implementation is adapted; JRP code/assets are not bundled. The required BSD notice and disclaimer are in [`THIRD_PARTY_NOTICES/JipperResourcePack-LICENSE.txt`](THIRD_PARTY_NOTICES/JipperResourcePack-LICENSE.txt). Upstream: [JipperResourcePack](https://github.com/yeonu-me/JipperResourcePack).
-- **DM Note** — its editor interaction patterns and visual design were used as UI/UX references. No DM Note source code or assets are bundled. DM Note is distributed under **GPL-3.0-only**: [DM Note](https://github.com/yeonu-me/dm-note).
-- **O5Kit** — external UI/library dependency referenced by the build, distributed under **LGPL-3.0-or-later**. It is maintained separately and is not copied into this repository: [O5Kit](https://github.com/modlist-org/O5Kit).
+Argon's own source is licensed under **GNU GPL version 3 only**. See [`LICENSE`](LICENSE).
 
-These notices apply to the named upstream work only; they do not, by themselves, declare an outbound license for Argon's own source. No separate Argon project license is declared in this repository yet.
+- **JipperResourcePack (JRP)** — its BSD 3-Clause-licensed key-viewer layout definitions were used as the reference for the 10/12/16/20-key ordering, coordinates, key widths, and related layout values. Argon's C# implementation is adapted; JRP code/assets are not bundled. The required BSD notice and disclaimer are in [`THIRD_PARTY_NOTICES/JipperResourcePack-LICENSE.txt`](THIRD_PARTY_NOTICES/JipperResourcePack-LICENSE.txt). Upstream: [JipperResourcePack](https://github.com/yeonu-me/JipperResourcePack).
+- **DM Note** — its editor interaction patterns and visual design were used as UI/UX references. No DM Note source code or assets are bundled. DM Note is separately distributed under **GPL-3.0-only**: [DM Note](https://github.com/yeonu-me/dm-note).
+- **O5Kit** — external UI/library dependency referenced by the build, distributed under **LGPL-3.0-or-later**. It is maintained separately and is not copied into this repository: [O5Kit](https://github.com/modlist-org/O5Kit).
