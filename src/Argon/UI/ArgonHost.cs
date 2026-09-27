@@ -853,6 +853,7 @@ internal sealed class ArgonHost : MonoBehaviour
     {
         _editorKpsText = CreateEditorStat(parent, "KPS", new Vector2(-96f, -142f));
         _editorTotalText = CreateEditorStat(parent, "TOTAL", new Vector2(96f, -142f));
+        _editorKpsShown = _editorTotalShown = -1;
     }
 
     private static TMP_Text CreateEditorStat(RectTransform parent, string title, Vector2 position)
@@ -2504,20 +2505,23 @@ internal sealed class ArgonHost : MonoBehaviour
         }
     }
 
+    private int _editorKpsShown = -1;
+    private int _editorTotalShown = -1;
+
     private void Update()
     {
         UpdateEditorShortcuts();
         _hudRuntime?.Tick(Time.unscaledDeltaTime);
         _keyViewer?.UpdateRuntime();
-        if (_editorKpsText != null && _keyViewer != null)
+        if (_editorKpsText != null && _keyViewer != null && _keyViewer.CurrentKps != _editorKpsShown)
         {
-            var value = _keyViewer.CurrentKps.ToString();
-            if (_editorKpsText.text != value) _editorKpsText.text = value;
+            _editorKpsShown = _keyViewer.CurrentKps;
+            NumberText.Set(_editorKpsText, _editorKpsShown);
         }
-        if (_editorTotalText != null && _keyViewer != null)
+        if (_editorTotalText != null && _keyViewer != null && _keyViewer.TotalCount != _editorTotalShown)
         {
-            var value = _keyViewer.TotalCount.ToString();
-            if (_editorTotalText.text != value) _editorTotalText.text = value;
+            _editorTotalShown = _keyViewer.TotalCount;
+            NumberText.Set(_editorTotalText, _editorTotalShown);
         }
         if (_editorSelectedName != null && _selectedBindingChoice != null && _keyViewer != null)
         {
@@ -2657,17 +2661,31 @@ internal sealed class ArgonHost : MonoBehaviour
     private void RefreshKeyPreview(bool force = false)
     {
         if (_activePage != "keyviewer" || _keyViewer == null || _store == null) return;
+        // The settings window is hidden during play; nothing here is visible then.
+        if (!force && (_window == null || !_window.Rect.gameObject.activeInHierarchy)) return;
         foreach (var cell in _keyPreviewCells)
         {
             var label = _keyViewer.GetSlotLabel(cell.Slot, cell.Foot, false);
             var pressed = _keyViewer.IsSlotPressed(cell.Slot, cell.Foot);
             var selected = cell.Slot == _selectedKeySlot && cell.Foot == _selectedKeyFoot;
             var showCounter = _keyViewer.GetSlotCounterVisible(cell.Slot, cell.Foot);
-            cell.Counter!.gameObject.SetActive(showCounter);
-            cell.Counter.text = _keyViewer.GetSlotCount(cell.Slot, cell.Foot).ToString();
-            cell.Counter.fontSize = 11f * _keyEditorZoom;
-            if (cell.Button.Label != null)
-                cell.Button.Label.rectTransform.anchorMin = new Vector2(0f, showCounter ? 0.3f : 0f);
+            var count = _keyViewer.GetSlotCount(cell.Slot, cell.Foot);
+            if (force || cell.LastShowCounter != showCounter || !Mathf.Approximately(cell.LastZoom, _keyEditorZoom))
+            {
+                cell.LastShowCounter = showCounter;
+                cell.LastZoom = _keyEditorZoom;
+                cell.LastCount = -1;
+                cell.Counter!.gameObject.SetActive(showCounter);
+                cell.Counter.fontSize = 11f * _keyEditorZoom;
+                if (cell.Button.Label != null)
+                    cell.Button.Label.rectTransform.anchorMin = new Vector2(0f, showCounter ? 0.3f : 0f);
+            }
+
+            if (showCounter && count != cell.LastCount)
+            {
+                cell.LastCount = count;
+                NumberText.Set(cell.Counter!, count);
+            }
             if (!force && cell.LastLabel == label && cell.LastPressed == pressed && cell.LastSelected == selected &&
                 cell.LastPaletteRevision == _keyPreviewPaletteRevision) continue;
 
@@ -2690,7 +2708,7 @@ internal sealed class ArgonHost : MonoBehaviour
             cell.Surface.BorderColor = outline;
             cell.Surface.SetVerticesDirty();
             cell.Outline.effectColor = outline;
-            cell.Counter.color = textColor;
+            cell.Counter!.color = textColor;
             if (cell.Button.Label != null)
             {
                 cell.Button.Label.text = label;
@@ -2756,6 +2774,9 @@ internal sealed class ArgonHost : MonoBehaviour
         internal bool LastPressed { get; set; }
         internal bool LastSelected { get; set; }
         internal int LastPaletteRevision { get; set; } = -1;
+        internal bool? LastShowCounter { get; set; }
+        internal float LastZoom { get; set; } = -1f;
+        internal int LastCount { get; set; } = -1;
 
         internal KeyPreviewCell(O5Button button, Outline outline, int slot, bool foot, List<GameObject> handles)
         {

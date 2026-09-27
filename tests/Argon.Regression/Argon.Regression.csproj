@@ -8,5 +8,6 @@
     <Compile Include="../../src/Argon/KeyViewer/KeyLayoutGeometry.cs" Link="KeyLayoutGeometry.cs" />
     <Compile Include="../../src/Argon/KeyViewer/JrpKeyLayout.cs" Link="JrpKeyLayout.cs" />
     <Compile Include="../../src/Argon/UI/EditorViewportMath.cs" Link="EditorViewportMath.cs" />
+    <Compile Include="../../src/Argon/Hud/NumberText.Digits.cs" Link="NumberText.Digits.cs" />
   </ItemGroup>
 </Project>

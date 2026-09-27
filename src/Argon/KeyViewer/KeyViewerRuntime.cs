@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Argon.Storage;
 using O5Kit.Core;
@@ -8,6 +9,7 @@ using SkyHook;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Debug = UnityEngine.Debug;
 
 namespace Argon.KeyViewer;
 
@@ -24,13 +26,20 @@ internal sealed class KeyViewerRuntime : IDisposable
     private readonly RectTransform _totalBar;
     private readonly List<KeySlotView> _slots = new List<KeySlotView>();
     private readonly List<RainTrail> _trails = new List<RainTrail>();
+    private readonly Stack<RainTrail> _trailPool = new Stack<RainTrail>();
+    private readonly RectTransform _rainLayer;
+    private readonly RainGraphic _rain;
     private readonly Queue<float> _pressTimes = new Queue<float>();
-    private readonly Queue<float>[] _keyPressTimes = Enumerable.Range(0, 36).Select(_ => new Queue<float>()).ToArray();
+    private int _lastKps = -1;
+    private int _lastTotal = -1;
     private readonly bool[] _wasPressed = new bool[36];
     private readonly bool[] _wasGhostPressed = new bool[36];
     private readonly bool[] _hookPressed = new bool[36];
     private readonly bool[] _hookGhostPressed = new bool[36];
-    private readonly ConcurrentQueue<SkyHookEvent> _hookEvents = new ConcurrentQueue<SkyHookEvent>();
+    // Hook events carry a Stopwatch timestamp taken on the hook thread, so presses and rain keep
+    // their real timing even though they are applied on the next Unity frame (Quartz KvInputQueue idea).
+    private readonly ConcurrentQueue<TimedHookEvent> _hookEvents = new ConcurrentQueue<TimedHookEvent>();
+    private static readonly KeyCode[] AllKeyCodes = (KeyCode[])Enum.GetValues(typeof(KeyCode));
     private bool _disposed;
     private bool _captureNext;
     private int _captureSlot = -1;
@@ -96,6 +105,18 @@ internal sealed class KeyViewerRuntime : IDisposable
         group.interactable = false;
         group.blocksRaycasts = false;
 
+        // Rain lives on its own nested canvas behind the keys: moving notes rebuild only this mesh,
+        // not the whole HUD canvas with all of its text.
+        var rainObject = new GameObject("KeyRain");
+        rainObject.transform.SetParent(_root.transform, false);
+        _rainLayer = rainObject.AddComponent<RectTransform>();
+        _rainLayer.anchorMin = Vector2.zero;
+        _rainLayer.anchorMax = Vector2.one;
+        _rainLayer.offsetMin = _rainLayer.offsetMax = Vector2.zero;
+        rainObject.AddComponent<Canvas>();
+        _rain = rainObject.AddComponent<RainGraphic>();
+        _rain.raycastTarget = false;
+
         _summary = CreateSummaryBar("KPS", out _summaryBar);
         _total = CreateSummaryBar("Total", out _totalBar);
 
@@ -116,8 +137,13 @@ internal sealed class KeyViewerRuntime : IDisposable
 
     internal int GetSlotCount(int index, bool foot)
     {
-        var slot = _slots.FirstOrDefault(value => value.Index == index && value.IsFoot == foot);
-        return slot == null ? 0 : _settings.KeyCounts[slot.CountIndex];
+        for (var i = 0; i < _slots.Count; i++)
+        {
+            var slot = _slots[i];
+            if (slot.Index == index && slot.IsFoot == foot) return _settings.KeyCounts[slot.CountIndex];
+        }
+
+        return 0;
     }
 
     internal void SetEnabled(bool enabled)
@@ -358,6 +384,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         }
 
         RefreshColors();
+        _store.Save();
     }
 
     internal void SetSlotBorderWidth(int slot, bool foot, float value, bool save = true)
@@ -420,11 +447,6 @@ internal sealed class KeyViewerRuntime : IDisposable
     {
         Array.Clear(_settings.KeyCounts, 0, _settings.KeyCounts.Length);
         _settings.TotalCount = 0;
-        foreach (var queue in _keyPressTimes)
-        {
-            queue.Clear();
-        }
-
         _pressTimes.Clear();
         _store.Save();
         RefreshSlotText();
@@ -492,7 +514,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         _captureSlot = slot;
         _captureFoot = foot;
         _captureGhost = ghost;
-        _captureMessage = "다음 키 입력을 기다리는 중…";
+        _captureMessage = "다음 키 입력을 기다리는 중… (Esc: 취소)";
         _captureNext = true;
     }
 
@@ -530,13 +552,13 @@ internal sealed class KeyViewerRuntime : IDisposable
             PollCapture();
         }
 
+        Prune(_pressTimes, now);
         if (!_root.activeInHierarchy)
         {
             return;
         }
 
         var useGlobalInput = _skyHookSubscribed && SkyHookManager.Instance != null && SkyHookManager.Instance.isHookActive;
-        Prune(_pressTimes, now);
         for (var i = 0; i < _slots.Count; i++)
         {
             var slot = _slots[i];
@@ -554,11 +576,10 @@ internal sealed class KeyViewerRuntime : IDisposable
                     _settings.KeyCounts[slot.CountIndex] = Math.Max(0, _settings.KeyCounts[slot.CountIndex]) + 1;
                     _settings.TotalCount = Math.Max(0, _settings.TotalCount) + 1;
                     _pressTimes.Enqueue(now);
-                    _keyPressTimes[slot.CountIndex].Enqueue(now);
-                    SpawnTrail(slot.Rect, false, GetSlotNoteEffect(slot.Index, slot.IsFoot));
+                    SpawnTrail(slot.Rect, false, GetSlotNoteEffect(slot.Index, slot.IsFoot), now);
                     _countsDirty = true;
                 }
-                else ReleaseTrail(slot.Rect, false);
+                else ReleaseTrail(slot.Rect, false, now);
             }
 
             var ghostBinding = GetBinding(slot.Index, slot.IsFoot, true);
@@ -568,20 +589,29 @@ internal sealed class KeyViewerRuntime : IDisposable
                 : Application.isFocused && ghostCode != KeyCode.None && (int)ghostCode < ArgonStore.NativeKeyBase && Input.GetKey(ghostCode));
             if (ghostPressed && !_wasGhostPressed[slot.CountIndex])
             {
-                SpawnTrail(slot.Rect, true, GetSlotNoteEffect(slot.Index, slot.IsFoot));
+                SpawnTrail(slot.Rect, true, GetSlotNoteEffect(slot.Index, slot.IsFoot), now);
             }
-            if (!ghostPressed && _wasGhostPressed[slot.CountIndex]) ReleaseTrail(slot.Rect, true);
+            if (!ghostPressed && _wasGhostPressed[slot.CountIndex]) ReleaseTrail(slot.Rect, true, now);
 
             _wasGhostPressed[slot.CountIndex] = ghostPressed;
-            Prune(_keyPressTimes[slot.CountIndex], now);
-            slot.SetText(GetSlotLabel(slot.Index, slot.IsFoot, false), _settings.KeyCounts[slot.CountIndex],
-                _keyPressTimes[slot.CountIndex].Count, GetSlotCounterVisible(slot.Index, slot.IsFoot));
+            slot.SetCount(_settings.KeyCounts[slot.CountIndex]);
         }
 
         var kps = _pressTimes.Count;
-        _summary.text = kps.ToString();
-        _total.text = _settings.TotalCount.ToString();
+        if (kps != _lastKps)
+        {
+            _lastKps = kps;
+            NumberText.Set(_summary, kps);
+        }
+
+        if (_settings.TotalCount != _lastTotal)
+        {
+            _lastTotal = _settings.TotalCount;
+            NumberText.Set(_total, _lastTotal);
+        }
+
         _summaryBar.gameObject.SetActive(_settings.ShowTotalKps);
+        // Counts change every press; the store debounces and defers writes during play anyway.
         if (_countsDirty && now - _lastCountsSaveAt >= 10f)
         {
             _store.Save();
@@ -601,12 +631,8 @@ internal sealed class KeyViewerRuntime : IDisposable
         if (_countsDirty) _store.Save();
         ReleaseSkyHook();
         RestoreKeyLimit();
-        foreach (var trail in _trails)
-        {
-            if (trail.Root != null) UnityEngine.Object.Destroy(trail.Root);
-        }
-
         _trails.Clear();
+        _trailPool.Clear();
         if (_root != null) UnityEngine.Object.Destroy(_root);
     }
 
@@ -698,6 +724,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         ApplyRowPositions();
         RefreshSlotText();
         RefreshColors();
+        _lastKps = _lastTotal = -1;
     }
 
     private void BuildRow(RectTransform parent, int count, bool foot)
@@ -831,8 +858,8 @@ internal sealed class KeyViewerRuntime : IDisposable
     {
         foreach (var slot in _slots)
         {
-            slot.SetText(GetSlotLabel(slot.Index, slot.IsFoot, false), _settings.KeyCounts[slot.CountIndex],
-                _keyPressTimes[slot.CountIndex].Count, GetSlotCounterVisible(slot.Index, slot.IsFoot));
+            slot.SetText(GetSlotLabel(slot.Index, slot.IsFoot, false), GetSlotCounterVisible(slot.Index, slot.IsFoot));
+            slot.SetCount(_settings.KeyCounts[slot.CountIndex]);
         }
     }
 
@@ -849,11 +876,18 @@ internal sealed class KeyViewerRuntime : IDisposable
 
     private void PollCapture()
     {
-        foreach (KeyCode keyCode in Enum.GetValues(typeof(KeyCode)))
+        foreach (var keyCode in AllKeyCodes)
         {
-            if (keyCode == KeyCode.None || (int)keyCode >= 330 || !Input.GetKeyDown(keyCode))
+            // Mouse buttons (and joystick codes above them) would bind on the next click anywhere.
+            if (keyCode == KeyCode.None || keyCode >= KeyCode.Mouse0 || !Input.GetKeyDown(keyCode))
             {
                 continue;
+            }
+
+            if (keyCode == KeyCode.Escape)
+            {
+                CancelCapture();
+                return;
             }
 
             var binding = GetBinding(_captureSlot, _captureFoot, _captureGhost);
@@ -873,6 +907,13 @@ internal sealed class KeyViewerRuntime : IDisposable
             RefreshSlotText();
             return;
         }
+    }
+
+    internal void CancelCapture()
+    {
+        if (!_captureNext) return;
+        _captureNext = false;
+        _captureMessage = "키 변경 취소됨";
     }
 
     private void EnsureSkyHook()
@@ -937,17 +978,39 @@ internal sealed class KeyViewerRuntime : IDisposable
         _skyHookIntegrationPending = false;
     }
 
+    private readonly struct TimedHookEvent
+    {
+        internal readonly SkyHookEvent Event;
+        internal readonly long Timestamp;
+
+        internal TimedHookEvent(SkyHookEvent input, long timestamp)
+        {
+            Event = input;
+            Timestamp = timestamp;
+        }
+    }
+
+    // Runs on SkyHook's thread: timestamp immediately, touch nothing else.
     private void OnSkyHookEvent(SkyHookEvent input)
     {
-        _hookEvents.Enqueue(input);
+        _hookEvents.Enqueue(new TimedHookEvent(input, Stopwatch.GetTimestamp()));
     }
 
     private void ProcessHookEvents()
     {
-        while (_hookEvents.TryDequeue(out var input))
+        var now = Time.unscaledTime;
+        var nowTicks = Stopwatch.GetTimestamp();
+        while (_hookEvents.TryDequeue(out var timed))
         {
+            var input = timed.Event;
+            var age = (float)((nowTicks - timed.Timestamp) / (double)Stopwatch.Frequency);
+            var at = now - Mathf.Clamp(age, 0f, 0.25f);
             var pressed = input.Type == SkyHook.EventType.KeyPressed;
-            if (pressed && _captureNext) CaptureHookKey(input);
+            if (pressed && _captureNext)
+            {
+                CaptureHookKey(input);
+                continue; // the key being bound is not a counted press
+            }
 
             foreach (var slot in _slots)
             {
@@ -956,12 +1019,12 @@ internal sealed class KeyViewerRuntime : IDisposable
                 {
                     var wasPressed = _hookPressed[slot.CountIndex];
                     _hookPressed[slot.CountIndex] = pressed;
-                    if (pressed && !wasPressed && !_wasPressed[slot.CountIndex]) RegisterHookPress(slot);
+                    if (pressed && !wasPressed && !_wasPressed[slot.CountIndex]) RegisterHookPress(slot, at);
                     else if (!pressed && wasPressed)
                     {
                         _wasPressed[slot.CountIndex] = false;
                         ApplySlotColors(slot, false);
-                        ReleaseTrail(slot.Rect, false);
+                        ReleaseTrail(slot.Rect, false, at);
                     }
                 }
 
@@ -972,25 +1035,23 @@ internal sealed class KeyViewerRuntime : IDisposable
                     _hookGhostPressed[slot.CountIndex] = pressed;
                     if (pressed && !wasPressed && _settings.ShowGhostRain && GetSlotNoteEffect(slot.Index, slot.IsFoot))
                     {
-                        SpawnTrail(slot.Rect, true, true);
+                        SpawnTrail(slot.Rect, true, true, at);
                     }
                     _wasGhostPressed[slot.CountIndex] = pressed && _settings.ShowGhostRain;
-                    if (!pressed) ReleaseTrail(slot.Rect, true);
+                    if (!pressed) ReleaseTrail(slot.Rect, true, at);
                 }
             }
         }
     }
 
-    private void RegisterHookPress(KeySlotView slot)
+    private void RegisterHookPress(KeySlotView slot, float at)
     {
         _wasPressed[slot.CountIndex] = true;
         ApplySlotColors(slot, true);
         _settings.KeyCounts[slot.CountIndex] = Math.Max(0, _settings.KeyCounts[slot.CountIndex]) + 1;
         _settings.TotalCount = Math.Max(0, _settings.TotalCount) + 1;
-        var now = Time.unscaledTime;
-        _pressTimes.Enqueue(now);
-        _keyPressTimes[slot.CountIndex].Enqueue(now);
-        SpawnTrail(slot.Rect, false, GetSlotNoteEffect(slot.Index, slot.IsFoot));
+        _pressTimes.Enqueue(at);
+        SpawnTrail(slot.Rect, false, GetSlotNoteEffect(slot.Index, slot.IsFoot), at);
         _countsDirty = true;
     }
 
@@ -1005,6 +1066,12 @@ internal sealed class KeyViewerRuntime : IDisposable
         }
 
         var mapped = SkyHookKeyMapper.SkyHookKeyToUnityKey(input.Label);
+        if (mapped == KeyCode.Escape)
+        {
+            CancelCapture();
+            return;
+        }
+
         binding.KeyCode = mapped != KeyCode.None ? (int)mapped : ArgonStore.NativeKeyBase + input.Key;
         binding.Label = mapped != KeyCode.None
             ? mapped.ToString()
@@ -1041,73 +1108,86 @@ internal sealed class KeyViewerRuntime : IDisposable
         return bindingIndex >= 0 && bindingIndex < bindings.Length ? bindings[bindingIndex] : null;
     }
 
-    private void SpawnTrail(RectTransform source, bool ghost, bool slotEffectEnabled)
+    private void SpawnTrail(RectTransform source, bool ghost, bool slotEffectEnabled, float startedAt)
     {
         if (!slotEffectEnabled || (ghost ? !_settings.ShowGhostRain : !_settings.ShowRain))
         {
             return;
         }
 
-        var rain = new GameObject(ghost ? "GhostRain" : "KeyRain");
-        rain.transform.SetParent(source, false);
-        rain.transform.SetAsFirstSibling();
-        var rect = rain.AddComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
-        rect.pivot = new Vector2(0.5f, 0f);
-        rect.anchoredPosition = Vector2.zero;
-        rect.sizeDelta = new Vector2(source.rect.width, 4f);
-        var image = rain.AddComponent<Image>();
-        image.color = ParseColor(ghost ? _settings.GhostRainColor : _settings.RainColor, ghost ? Color.white : new Color(0.51f, 0.12f, 0.86f, 0.8f));
-        image.raycastTarget = false;
         if (_trails.Count >= 512)
         {
-            UnityEngine.Object.Destroy(_trails[0].Root);
+            _trailPool.Push(_trails[0]);
             _trails.RemoveAt(0);
         }
-        _trails.Add(new RainTrail(rain, image, Time.unscaledTime, _settings.RainHeight, source, ghost));
+
+        var trail = _trailPool.Count > 0 ? _trailPool.Pop() : new RainTrail();
+        trail.Source = source;
+        trail.Ghost = ghost;
+        trail.StartedAt = startedAt;
+        trail.ReleasedAt = null;
+        trail.BaseColor = ParseColor(ghost ? _settings.GhostRainColor : _settings.RainColor,
+            ghost ? Color.white : new Color(0.51f, 0.12f, 0.86f, 0.8f));
+        _trails.Add(trail);
     }
 
-    private void ReleaseTrail(RectTransform source, bool ghost)
+    private void ReleaseTrail(RectTransform source, bool ghost, float releasedAt)
     {
-        foreach (var trail in _trails)
+        for (var i = 0; i < _trails.Count; i++)
+        {
+            var trail = _trails[i];
             if (trail.Source == source && trail.Ghost == ghost && !trail.ReleasedAt.HasValue)
-                trail.ReleasedAt = Time.unscaledTime;
+                trail.ReleasedAt = Math.Max(releasedAt, trail.StartedAt);
+        }
     }
 
     private void ClearTrails()
     {
-        foreach (var trail in _trails)
-            if (trail.Root != null) UnityEngine.Object.Destroy(trail.Root);
+        foreach (var trail in _trails) _trailPool.Push(trail);
         _trails.Clear();
+        if (_rain.Quads.Count > 0)
+        {
+            _rain.Quads.Clear();
+            _rain.SetVerticesDirty();
+        }
     }
 
     private void UpdateTrails()
     {
+        var hadQuads = _rain.Quads.Count > 0;
+        _rain.Quads.Clear();
+        if (_trails.Count == 0)
+        {
+            if (hadQuads) _rain.SetVerticesDirty();
+            return;
+        }
+
         var now = Time.unscaledTime;
-        for (var i = _trails.Count - 1; i >= 0; i--)
+        var write = 0;
+        for (var i = 0; i < _trails.Count; i++)
         {
             var trail = _trails[i];
-            if (trail.Root == null)
-            {
-                _trails.RemoveAt(i);
-                continue;
-            }
-
-            if (!RainGeometry.Sample(now, trail.StartedAt, trail.ReleasedAt, _settings.RainSpeed,
+            if (trail.Source == null || !RainGeometry.Sample(now, trail.StartedAt, trail.ReleasedAt, _settings.RainSpeed,
                     _settings.RainHeight, out var bottom, out var height, out var opacity))
             {
-                UnityEngine.Object.Destroy(trail.Root);
-                _trails.RemoveAt(i);
+                _trailPool.Push(trail);
                 continue;
             }
 
-            var rect = (RectTransform)trail.Root.transform;
-            rect.anchoredPosition = new Vector2(0f, bottom);
-            rect.sizeDelta = new Vector2(trail.Source.rect.width, height);
+            _trails[write++] = trail;
+            var sourceRect = trail.Source.rect;
+            var top = _rainLayer.InverseTransformPoint(trail.Source.TransformPoint(new Vector3(sourceRect.center.x, sourceRect.yMax)));
             var color = trail.BaseColor;
             color.a *= opacity;
-            trail.Image.color = color;
+            _rain.Quads.Add(new RainGraphic.Quad
+            {
+                Rect = new Rect(top.x - sourceRect.width * 0.5f, top.y + bottom, sourceRect.width, height),
+                Color = color,
+            });
         }
+
+        _trails.RemoveRange(write, _trails.Count - write);
+        _rain.SetVerticesDirty();
     }
 
     private void ApplyKeyLimit()
@@ -1175,8 +1255,8 @@ internal sealed class KeyViewerRuntime : IDisposable
                 layout.OffsetY = ClampFinite(layout.OffsetY, 0f, -600f, 600f);
                 layout.Width = layout.Width <= 0f ? 0f : ClampFinite(layout.Width, 56f, 24f, 240f);
                 layout.Height = layout.Height <= 0f ? 0f : ClampFinite(layout.Height, 56f, 24f, 240f);
-                layout.BorderWidth = ClampFinite(layout.BorderWidth, 1.5f, 0f, 12f);
-                layout.FontSize = ClampFinite(layout.FontSize, 15f, 8f, 48f);
+                layout.BorderWidth = ClampFinite(layout.BorderWidth, 1f, 0f, 12f);
+                layout.FontSize = ClampFinite(layout.FontSize, 18f, 8f, 48f);
             }
         }
     }
@@ -1251,7 +1331,6 @@ internal sealed class KeyViewerRuntime : IDisposable
         internal int Index { get; }
         internal int CountIndex { get; }
         internal bool IsFoot { get; }
-        private string _lastText = string.Empty;
 
         internal KeySlotView(GameObject root, RectTransform rect, KeycapGraphic background, Outline outline,
             TextMeshProUGUI label, TextMeshProUGUI count, int index, int countIndex, bool foot)
@@ -1286,40 +1365,39 @@ internal sealed class KeyViewerRuntime : IDisposable
             _label.overflowMode = TextOverflowModes.Ellipsis;
         }
 
-        internal void SetText(string key, int count, int kps, bool showCounter)
+        private string? _lastKey;
+        private bool? _lastShowCounter;
+        private int _lastCount = -1;
+
+        internal void SetText(string key, bool showCounter)
         {
-            var value = key + "\n" + count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "  ·  " +
-                        kps.ToString(System.Globalization.CultureInfo.InvariantCulture) + "/s" + showCounter;
-            if (_lastText == value) return;
-            _lastText = value;
-            _label.text = key;
+            if (_lastKey != key)
+            {
+                _lastKey = key;
+                _label.text = key;
+            }
+
+            if (_lastShowCounter == showCounter) return;
+            _lastShowCounter = showCounter;
             _label.rectTransform.anchorMin = new Vector2(0f, showCounter ? 0.3f : 0f);
-            _count.text = showCounter
-                ? count.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                : string.Empty;
+            _count.gameObject.SetActive(showCounter);
+            _lastCount = -1;
+        }
+
+        internal void SetCount(int count)
+        {
+            if (_lastShowCounter != true || count == _lastCount) return;
+            _lastCount = count;
+            NumberText.Set(_count, count);
         }
     }
 
     private sealed class RainTrail
     {
-        internal GameObject Root { get; }
-        internal Image Image { get; }
-        internal float StartedAt { get; }
-        internal float Height { get; }
-        internal RectTransform Source { get; }
-        internal bool Ghost { get; }
-        internal float? ReleasedAt { get; set; }
-        internal Color BaseColor { get; }
-
-        internal RainTrail(GameObject root, Image image, float startedAt, float height, RectTransform source, bool ghost)
-        {
-            Root = root;
-            Image = image;
-            StartedAt = startedAt;
-            Height = height;
-            Source = source;
-            Ghost = ghost;
-            BaseColor = image.color;
-        }
+        internal RectTransform? Source;
+        internal bool Ghost;
+        internal float StartedAt;
+        internal float? ReleasedAt;
+        internal Color BaseColor;
     }
 }

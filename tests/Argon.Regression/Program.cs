@@ -139,4 +139,20 @@ var selectStart = host.IndexOf("internal void SelectKeySlot(", StringComparison.
 var selectEnd = host.IndexOf("private void BuildLayoutPage(", selectStart, StringComparison.Ordinal);
 if (host.Substring(selectStart, selectEnd - selectStart).Contains("BuildWindowContent()"))
     throw new Exception("Selection rebuilds the entire window");
+// Allocation-free counters must print exactly what ToString() would.
+var digits = new char[16];
+foreach (var value in new[] { 0, 7, 10, 999, 123456, -42, int.MaxValue, int.MinValue })
+{
+    var length = Argon.NumberText.Write(value, digits);
+    var written = new string(digits, digits.Length - length, length);
+    if (written != value.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        throw new Exception($"NumberText wrote {written} for {value}");
+}
+// Progress/attempt records must not write the whole config synchronously every tile.
+var store = File.ReadAllText(Path.Combine(root, "src/Argon/Storage/ArgonStore.cs"));
+var saveStart = store.IndexOf("internal void Save()", StringComparison.Ordinal);
+var saveBody = store.Substring(saveStart, store.IndexOf("internal void Tick(", saveStart, StringComparison.Ordinal) - saveStart);
+if (saveBody.Contains("WriteNow(") || saveBody.Contains("File."))
+    throw new Exception("ArgonStore.Save must only mark the document dirty");
+Console.WriteLine("PASS: counters, debounced saves;");
 Console.WriteLine("PASS: JRP 10/12/16/20 keys, stats, foot layouts; rain, input, editor regression guards.");
