@@ -9,7 +9,7 @@ Other UnityModManager mods can contribute HUD elements through `Argon.Api.ArgonA
 - Call registration, unregistration, `RequestUpdate`, and Unity UI callbacks on Unity's main thread.
 - Element IDs must have at least three dot-separated, non-empty segments containing letters, digits, `_`, or `-` (for example, `publisher.mod.element`). IDs under `argon.builtin.*` are reserved.
 - A created view must be a `GameObject` whose root has a `RectTransform`. Argon parents and lays it out. `DisposeView` is for releasing the mod's subscriptions/resources; Argon destroys the root after the callback.
-- Callback exceptions are isolated to that element and logged. An update failure disables that instance until it is re-enabled/recreated.
+- Callback exceptions are isolated to that element and logged. An update failure hides that instance for the session until it is re-enabled/recreated; the saved layout keeps it enabled.
 
 ## Minimal element
 
@@ -82,7 +82,7 @@ internal static class ExampleHud
 - `RegisterElement` returns `Registered`, `DuplicateId`, `InvalidId`, or `InvalidDefinition`. A duplicate or malformed registration is not installed.
 - `HudElementContext.InstanceId` identifies the layout instance. `HudElementContext.Settings` is a persisted `JObject` specific to that instance, so do not keep a second authoritative copy of those settings.
 - `HudRefreshPolicy.EveryFrame` and `Interval` are scheduled by Argon. For `OnChange`, `EventDriven`, and `Manual`, call `ArgonApi.RequestUpdate(instanceId)` when your data changes; updates still execute on Argon's next Unity tick.
-- `ArgonApi.SaveSettings()` writes the current Argon document. Call it after modifying the settings bag.
+- `ArgonApi.SaveSettings()` schedules a write of the current Argon document (debounced about 0.5 s, performed off the main thread, deferred during active gameplay, and flushed when Argon shuts down). Call it after modifying the settings bag.
 - `UnregisterElement(id)` disposes current instances but preserves their layout records and settings. Re-registering the same ID allows those records to be restored.
 - `DisposeView`, `CreateView`, and `UpdateView` callbacks are owned by the registering mod and must not outlive its registration.
 

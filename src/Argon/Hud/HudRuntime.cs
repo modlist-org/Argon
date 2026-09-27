@@ -94,7 +94,7 @@ internal sealed class HudRuntime : IDisposable
         {
             var autoHidden = GameStateSource.Preferences.HideHudDuringAuto && GameStateSource.Current.IsAuto &&
                              instance.Definition.Id != "argon.builtin.status";
-            var shouldBeActive = instance.Enabled && !autoHidden;
+            var shouldBeActive = instance.Enabled && !instance.Faulted && !autoHidden;
             if (instance.View.Root != null && instance.View.Root.activeSelf != shouldBeActive)
             {
                 instance.View.Root.SetActive(shouldBeActive);
@@ -118,13 +118,14 @@ internal sealed class HudRuntime : IDisposable
             }
             catch (Exception exception)
             {
-                instance.Enabled = false;
+                // Hide for this session only; one bad frame must not persist Enabled=false into the layout.
+                instance.Faulted = true;
                 if (instance.View.Root != null)
                 {
                     instance.View.Root.SetActive(false);
                 }
 
-                Debug.LogError($"[Argon] HUD element '{instance.Definition.Id}' failed and was disabled: {exception}");
+                Debug.LogError($"[Argon] HUD element '{instance.Definition.Id}' failed and was hidden until re-enabled: {exception}");
             }
         }
     }
@@ -143,7 +144,7 @@ internal sealed class HudRuntime : IDisposable
         }
 
         instance.Enabled = enabled;
-        instance.Layout.Enabled = enabled;
+        instance.Faulted = false;
         instance.View.Root.SetActive(enabled);
         instance.Dirty = true;
         _store.Save();
@@ -178,7 +179,8 @@ internal sealed class HudRuntime : IDisposable
     {
         foreach (var instance in _instances.Values)
         {
-            var handle = instance.View.Root.GetComponent<HudElementEditHandle>() ?? instance.View.Root.AddComponent<HudElementEditHandle>();
+            if (instance.View.Root == null) continue;
+            var handle = GetOrAdd<HudElementEditHandle>(instance.View.Root);
             handle.Initialize(this, instance.InstanceId);
             handle.SetEditing(enabled);
         }
@@ -244,7 +246,7 @@ internal sealed class HudRuntime : IDisposable
         instance.Layout.Scale = Mathf.Clamp(scale, 0.1f, 4f);
         instance.Layout.Opacity = Mathf.Clamp01(opacity);
         instance.View.Rect.localScale = Vector3.one * instance.Layout.Scale;
-        var group = instance.View.Root.GetComponent<CanvasGroup>() ?? instance.View.Root.AddComponent<CanvasGroup>();
+        var group = GetOrAdd<CanvasGroup>(instance.View.Root);
         group.alpha = instance.Layout.Opacity;
         if (save) _store.Save();
         return true;
@@ -269,9 +271,10 @@ internal sealed class HudRuntime : IDisposable
     internal bool SetOrder(string instanceId, int order)
     {
         if (!_instances.TryGetValue(instanceId, out var instance)) return false;
-        instance.Layout.Order = Mathf.Clamp(order, 0, Math.Max(0, _store.ActiveLayout.Elements.Count - 1));
-        var ordered = _store.ActiveLayout.Elements.OrderBy(element => element.Order).ToArray();
-        for (var i = 0; i < ordered.Length; i++)
+        // Remove, then insert at the target index, so dropping onto an occupied order lands exactly there.
+        var ordered = _store.ActiveLayout.Elements.Where(element => element != instance.Layout).OrderBy(element => element.Order).ToList();
+        ordered.Insert(Mathf.Clamp(order, 0, ordered.Count), instance.Layout);
+        for (var i = 0; i < ordered.Count; i++)
         {
             ordered[i].Order = i;
             if (_instances.TryGetValue(ordered[i].InstanceId, out var current))
@@ -656,7 +659,7 @@ internal sealed class HudRuntime : IDisposable
             layout.Scale = Mathf.Clamp(layout.Scale, 0.1f, 4f);
             layout.Opacity = Mathf.Clamp01(layout.Opacity);
             view.Rect.localScale = Vector3.one * layout.Scale;
-            var canvasGroup = view.Root.GetComponent<CanvasGroup>() ?? view.Root.AddComponent<CanvasGroup>();
+            var canvasGroup = GetOrAdd<CanvasGroup>(view.Root);
             canvasGroup.alpha = layout.Opacity;
             view.Root.SetActive(layout.Enabled);
             view.Root.transform.SetSiblingIndex(Mathf.Clamp(layout.Order, 0, Mathf.Max(0, _root.transform.childCount - 1)));
@@ -815,6 +818,13 @@ internal sealed class HudRuntime : IDisposable
         }
     }
 
+    // Unity overloads == for destroyed objects; `??` would bypass that check.
+    private static T GetOrAdd<T>(GameObject gameObject) where T : Component
+    {
+        var component = gameObject.GetComponent<T>();
+        return component != null ? component : gameObject.AddComponent<T>();
+    }
+
     private sealed class RuntimeElement
     {
         internal string InstanceId => Layout.InstanceId;
@@ -822,6 +832,7 @@ internal sealed class HudRuntime : IDisposable
         internal HudElementDefinition Definition { get; }
         internal HudElementView View { get; }
         internal bool Enabled { get => Layout.Enabled; set => Layout.Enabled = value; }
+        internal bool Faulted { get; set; }
         internal bool Dirty { get; set; } = true;
         internal float NextUpdateAt { get; set; }
         internal float Elapsed { get; set; }

@@ -20,6 +20,12 @@ internal static class ComboHudElement
             Update);
     }
 
+    private static HudElementView? _lastView;
+    private static int _lastCombo = -1;
+    private static int _lastTier = -1;
+    private static int _lastPure = -1;
+    private static float _refreshAt;
+
     private static void Update(HudElementView view, float deltaTime)
     {
         var textView = (HudTextView)view;
@@ -30,8 +36,25 @@ internal static class ComboHudElement
             textView.SetText(string.Empty);
             textView.ApplyStyle(HudStyle.FontSize, HudStyle.TextColor);
             textView.UpdateCounterPulse(0, deltaTime, false);
+            _lastView = null;
             return;
         }
+
+        // Runs every frame for the pulse; rebuild the rich text only when the combo changes
+        // (or periodically, to pick up colour edits) instead of formatting it 60+ times a second.
+        var pure = preferences.ShowPurePerfectCombo ? snapshot.PurePerfectCombo : 0;
+        if (ReferenceEquals(_lastView, view) && snapshot.Combo == _lastCombo && snapshot.ComboTier == _lastTier &&
+            pure == _lastPure && Time.unscaledTime < _refreshAt)
+        {
+            textView.UpdateCounterPulse(snapshot.Combo, deltaTime, true);
+            return;
+        }
+
+        _lastView = view;
+        _lastCombo = snapshot.Combo;
+        _lastTier = snapshot.ComboTier;
+        _lastPure = pure;
+        _refreshAt = Time.unscaledTime + 0.5f;
 
         var tierColor = ColorUtility.ToHtmlStringRGBA(HudStyle.ComboColor(snapshot.Combo, snapshot.ComboTier));
         var countColor = ColorUtility.ToHtmlStringRGBA(HudStyle.ComboColor(snapshot.Combo, 0));
