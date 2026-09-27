@@ -9,7 +9,7 @@ internal static class ComboHudElement
     {
         return new HudElementDefinition(
             "argon.builtin.combo",
-            "콤보",
+            "Combo",
             false,
             HudAnchor.TopCenter,
             new Vector2(0f, -112f),

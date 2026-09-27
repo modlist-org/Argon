@@ -11,6 +11,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using Debug = UnityEngine.Debug;
+using Argon.Localization;
 
 namespace Argon.KeyViewer;
 
@@ -458,7 +459,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         var binding = GetBinding(slot, foot, ghost);
         if (binding == null)
         {
-            return "없음";
+            return L.T("common.none");
         }
 
         if (!string.IsNullOrWhiteSpace(binding.Label))
@@ -515,7 +516,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         _captureSlot = slot;
         _captureFoot = foot;
         _captureGhost = ghost;
-        _captureMessage = "다음 키 입력을 기다리는 중… (Esc: 취소)";
+        _captureMessage = L.T("capture.waiting");
         _captureNext = true;
     }
 
@@ -894,14 +895,14 @@ internal sealed class KeyViewerRuntime : IDisposable
             var binding = GetBinding(_captureSlot, _captureFoot, _captureGhost);
             if (binding == null)
             {
-                _captureMessage = "선택한 키 항목이 없습니다.";
+                _captureMessage = L.T("capture.no-slot");
                 _captureNext = false;
                 return;
             }
 
             binding.KeyCode = (int)keyCode;
             binding.Label = keyCode.ToString();
-            _captureMessage = "키 변경: " + keyCode;
+            _captureMessage = L.F("capture.changed", keyCode);
             _captureNext = false;
             ApplyKeyLimit();
             _store.Save();
@@ -914,7 +915,7 @@ internal sealed class KeyViewerRuntime : IDisposable
     {
         if (!_captureNext) return;
         _captureNext = false;
-        _captureMessage = "키 변경 취소됨";
+        _captureMessage = L.T("capture.cancelled");
     }
 
     private void EnsureSkyHook()
@@ -1061,7 +1062,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         var binding = GetBinding(_captureSlot, _captureFoot, _captureGhost);
         if (binding == null)
         {
-            _captureMessage = "선택한 키 항목이 없습니다.";
+            _captureMessage = L.T("capture.no-slot");
             _captureNext = false;
             return;
         }
@@ -1077,7 +1078,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         binding.Label = mapped != KeyCode.None
             ? mapped.ToString()
             : input.Label != KeyLabel.Unknown ? input.Label.ToString() : "Key " + input.Key;
-        _captureMessage = "키 변경: " + binding.Label;
+        _captureMessage = L.F("capture.changed", binding.Label);
         _captureNext = false;
         ApplyKeyLimit();
         _store.Save();

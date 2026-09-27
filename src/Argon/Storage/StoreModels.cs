@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Argon.Localization;
 
 namespace Argon.Storage;
 
@@ -22,6 +23,8 @@ internal sealed class ArgonPreferences
     public float HudScale { get; set; } = 1f;
     public float HudOpacity { get; set; } = 1f;
     public bool KeyViewerEnabled { get; set; } = true;
+    /// <summary>"auto" (follow the game's language) or a language code such as "ko-KR".</summary>
+    public string Language { get; set; } = "auto";
     public KeyViewerPreferences KeyViewer { get; set; } = new KeyViewerPreferences();
     public HudDisplayPreferences Hud { get; set; } = new HudDisplayPreferences();
     public AppearancePreferences Appearance { get; set; } = new AppearancePreferences();
@@ -286,7 +289,7 @@ internal sealed class LevelPlayRecord
 internal sealed class HudLayoutData
 {
     public string Id { get; set; } = "default";
-    public string Name { get; set; } = "기본";
+    public string Name { get; set; } = L.T("layout.default-name");
     public bool BuiltInDefaultsAdded { get; set; }
     public List<HudElementLayoutData> Elements { get; set; } = new List<HudElementLayoutData>();
 

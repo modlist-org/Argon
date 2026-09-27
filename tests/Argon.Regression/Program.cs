@@ -154,5 +154,22 @@ var saveStart = store.IndexOf("internal void Save()", StringComparison.Ordinal);
 var saveBody = store.Substring(saveStart, store.IndexOf("internal void Tick(", saveStart, StringComparison.Ordinal) - saveStart);
 if (saveBody.Contains("WriteNow(") || saveBody.Contains("File."))
     throw new Exception("ArgonStore.Save must only mark the document dirty");
+// Every language file must carry exactly the English keys, and every key used in code must exist.
+var langDir = Path.Combine(root, "src/Argon/Lang");
+var english = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(Path.Combine(langDir, "en-US.json")))["en-US"]!.ToObject<Dictionary<string, string>>()!;
+foreach (var file in Directory.GetFiles(langDir, "*.json"))
+{
+    var block = (Newtonsoft.Json.Linq.JObject)Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(file)).Properties().Single().Value;
+    if (block.Value<string>("0KTL") != "DO_NOT_TRANSLATE_THIS_KEY!") throw new Exception("Missing 0KTL sentinel in " + file);
+    var keys = block.Properties().Select(property => property.Name).ToHashSet();
+    foreach (var key in english.Keys)
+        if (!keys.Contains(key)) throw new Exception($"{Path.GetFileName(file)} is missing '{key}'");
+    foreach (var key in keys)
+        if (!english.ContainsKey(key)) throw new Exception($"{Path.GetFileName(file)} has unknown key '{key}'");
+}
+foreach (var source in Directory.GetFiles(Path.Combine(root, "src/Argon"), "*.cs", SearchOption.AllDirectories))
+    foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(source), @"L\.[TF]\(""([^""]+)""\s*[,)]"))
+        if (!english.ContainsKey(match.Groups[1].Value))
+            throw new Exception($"{Path.GetFileName(source)} uses missing key '{match.Groups[1].Value}'");
 Console.WriteLine("PASS: counters, debounced saves;");
 Console.WriteLine("PASS: JRP 10/12/16/20 keys, stats, foot layouts; rain, input, editor regression guards.");

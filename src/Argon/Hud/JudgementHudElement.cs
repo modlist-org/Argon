@@ -10,7 +10,7 @@ internal static class JudgementHudElement
     {
         return new HudElementDefinition(
             "argon.builtin.judgement",
-            "판정 · 타이밍",
+            "Judgement · Timing",
             false,
             HudAnchor.BottomCenter,
             new Vector2(0f, 44f),

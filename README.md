@@ -12,6 +12,7 @@ Argon is a Unity Mod Manager (UMM) mod for **A Dance of Fire and Ice (ADOFAI)**.
 - Key-viewer canvas editor with zoom, pan, grid snapping, reset, and undo/redo for layout edits.
 - Appearance options and a public API for other mods to register HUD elements. See [docs/API.md](docs/API.md).
 - Settings are stored locally at `Application.persistentDataPath/Argon/config.json`.
+- English and Korean UI, following the game's language by default (changeable under Preferences). Extra or corrected translations can be dropped into `Application.persistentDataPath/Argon/Lang/*.json` using the same format as `src/Argon/Lang/en-US.json`.
 
 Open settings with **Ctrl + Shift + O**.
 

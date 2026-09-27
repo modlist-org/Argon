@@ -10,7 +10,7 @@ internal static class StatusHudElement
     {
         return new HudElementDefinition(
             "argon.builtin.status",
-            "시간 · 기록 · 체크포인트",
+            "Time · Records · Checkpoints",
             false,
             HudAnchor.TopLeft,
             new Vector2(420f, -24f),

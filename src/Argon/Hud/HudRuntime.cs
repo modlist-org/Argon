@@ -6,6 +6,7 @@ using Argon.Storage;
 using UnityEngine;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
+using Argon.Localization;
 
 namespace Argon.Hud;
 
@@ -355,7 +356,7 @@ internal sealed class HudRuntime : IDisposable
         var clone = new HudLayoutData
         {
             Id = id,
-            Name = string.IsNullOrWhiteSpace(name) ? "새 레이아웃" : name.Trim(),
+            Name = string.IsNullOrWhiteSpace(name) ? L.T("layout.new-name") : name.Trim(),
             BuiltInDefaultsAdded = true,
             Elements = _store.ActiveLayout.Elements.Select(CloneLayoutData).ToList(),
         };

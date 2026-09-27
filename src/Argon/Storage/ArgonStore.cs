@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
 using Argon.Hud;
+using Argon.Localization;
 
 namespace Argon.Storage;
 
@@ -268,7 +269,7 @@ internal sealed class ArgonStore
                 layoutIds.Add(layout.Id);
             }
 
-            layout.Name = string.IsNullOrWhiteSpace(layout.Name) ? "레이아웃" : layout.Name.Trim();
+            layout.Name = string.IsNullOrWhiteSpace(layout.Name) ? L.T("nav.layout") : layout.Name.Trim();
         }
 
         Document.Preferences.Hud ??= new HudDisplayPreferences();
@@ -468,7 +469,7 @@ internal sealed class ArgonStore
         var layout = new HudLayoutData
         {
             Id = "default",
-            Name = "기본",
+            Name = L.T("layout.default-name"),
             BuiltInDefaultsAdded = true,
             Elements = new List<HudElementLayoutData>
             {

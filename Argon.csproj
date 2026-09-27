@@ -12,11 +12,13 @@
     <GameData Condition="'$(GameData)' == ''">ADanceOfFireAndIce_Data</GameData>
     <GameManagedPath Condition="'$(GameManagedPath)' == '' and '$(GamePath)' != ''">$(GamePath)/$(GameData)/Managed</GameManagedPath>
     <O5KitProject Condition="'$(O5KitProject)' == ''">$(MSBuildThisFileDirectory)../O5Kit/src/O5Kit/O5Kit.csproj</O5KitProject>
+    <!-- The regression project (and its bin/obj) lives under tests/; keep it out of the mod entirely. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
     <ModStageDir Condition="'$(ModStageDir)' == ''">$(MSBuildThisFileDirectory)dist/Argon</ModStageDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="tests/**/*.cs" />
+    <EmbeddedResource Include="src/Argon/Lang/*.json" LogicalName="Argon.Lang.%(Filename)%(Extension)" />
     <ProjectReference Include="$(O5KitProject)" />
     <!-- O5Kit's numeric input controls depend on this at runtime. -->
     <PackageReference Include="NCalc" Version="7.0.2" />

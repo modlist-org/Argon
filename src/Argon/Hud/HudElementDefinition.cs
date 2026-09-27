@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Argon.Localization;
 using UnityEngine;
 
 namespace Argon.Hud;
@@ -16,7 +17,14 @@ internal enum HudUpdatePolicy
 internal sealed class HudElementDefinition
 {
     internal string Id { get; }
-    internal string DisplayName { get; }
+    private readonly string _displayName;
+
+    // Built-in names are translated at read time so a language switch applies without re-registering.
+    internal string DisplayName => Id.StartsWith(BuiltinPrefix, StringComparison.Ordinal)
+        ? L.T("hud.element." + Id.Substring(BuiltinPrefix.Length), _displayName)
+        : _displayName;
+
+    private const string BuiltinPrefix = "argon.builtin.";
     internal bool AllowMultiple { get; }
     internal HudAnchor DefaultAnchor { get; }
     internal Vector2 DefaultPosition { get; }
@@ -49,7 +57,7 @@ internal sealed class HudElementDefinition
         }
 
         Id = id;
-        DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
+        _displayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
         AllowMultiple = allowMultiple;
         DefaultAnchor = defaultAnchor;
         DefaultPosition = defaultPosition;

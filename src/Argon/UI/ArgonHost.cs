@@ -18,6 +18,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
+using Argon.Localization;
 
 namespace Argon.UI;
 
@@ -131,7 +132,10 @@ internal sealed class ArgonHost : MonoBehaviour
         {
             Debug.LogWarning($"[Argon] Font fallback unavailable: {exception.Message}");
         }
+        L.SetLanguage(L.Auto);
         _store = ArgonStore.Load();
+        L.SetLanguage(_store.Document.Preferences.Language);
+        L.Changed += OnLanguageChanged;
         GameApi.LogDetectedVersion();
         _hudRuntime = HudRuntime.Create(transform, _store);
         _keyViewer = new KeyViewerRuntime(_hudRuntime.CanvasTransform, _store);
@@ -261,16 +265,16 @@ internal sealed class ArgonHost : MonoBehaviour
         brandSubtitle.rectTransform.offsetMin = new Vector2(2f, 0f);
         brandSubtitle.rectTransform.offsetMax = Vector2.zero;
 
-        AddSidebarGroupLabel(sidebarObject.transform, "시작");
-        AddNavigationButton(sidebarObject.transform, "개요", "overview");
-        AddSidebarGroupLabel(sidebarObject.transform, "모듈");
+        AddSidebarGroupLabel(sidebarObject.transform, L.T("nav.group.start"));
+        AddNavigationButton(sidebarObject.transform, L.T("nav.overview"), "overview");
+        AddSidebarGroupLabel(sidebarObject.transform, L.T("nav.group.modules"));
         AddNavigationButton(sidebarObject.transform, "HUD", "hud");
-        AddNavigationButton(sidebarObject.transform, "키 뷰어", "keyviewer");
-        AddSidebarGroupLabel(sidebarObject.transform, "스튜디오");
-        AddNavigationButton(sidebarObject.transform, "레이아웃", "layout");
-        AddNavigationButton(sidebarObject.transform, "게임 외형", "appearance");
-        AddSidebarGroupLabel(sidebarObject.transform, "설정");
-        AddNavigationButton(sidebarObject.transform, "환경 설정", "general");
+        AddNavigationButton(sidebarObject.transform, L.T("nav.keyviewer"), "keyviewer");
+        AddSidebarGroupLabel(sidebarObject.transform, L.T("nav.group.studio"));
+        AddNavigationButton(sidebarObject.transform, L.T("nav.layout"), "layout");
+        AddNavigationButton(sidebarObject.transform, L.T("nav.appearance"), "appearance");
+        AddSidebarGroupLabel(sidebarObject.transform, L.T("nav.group.settings"));
+        AddNavigationButton(sidebarObject.transform, L.T("nav.general"), "general");
 
         var spacer = new GameObject("SidebarSpacer");
         spacer.transform.SetParent(sidebarObject.transform, false);
@@ -281,7 +285,7 @@ internal sealed class ArgonHost : MonoBehaviour
         shortcutBg.type = Image.Type.Sliced;
         shortcutBg.color = new Color32(39, 38, 57, 255);
         var shortcutText = O5Factory.ControlText(shortcut, 13f);
-        shortcutText.text = "설정 창 단축키\n<color=#BBAAFF>Ctrl  +  Shift  +  O</color>";
+        shortcutText.text = L.T("sidebar.shortcut");
         shortcutText.characterSpacing = 0f;
         shortcutText.textWrappingMode = TextWrappingModes.NoWrap;
 
@@ -335,7 +339,7 @@ internal sealed class ArgonHost : MonoBehaviour
         statusImage.color = new Color32(39, 51, 54, 255);
         statusImage.raycastTarget = false;
         var statusText = O5Factory.ControlText(statusRect, 12f, true);
-        statusText.text = "실시간 미리보기";
+        statusText.text = L.T("preview.live");
         statusText.color = new Color32(125, 222, 174, 255);
         statusText.characterSpacing = 0.3f;
         statusText.alignment = TextAlignmentOptions.Center;
@@ -375,17 +379,17 @@ internal sealed class ArgonHost : MonoBehaviour
 
     private void BuildOverviewPage(RectTransform page)
     {
-        var welcome = CreateSettingsCard(page, "Argon에 오신 것을 환영합니다", "A Dance of Fire and Ice를 위한 HUD 작업 공간입니다.");
+        var welcome = CreateSettingsCard(page, L.T("overview.welcome.title"), L.T("overview.welcome.subtitle"));
         var welcomeTextRow = O5Factory.Row(welcome, 58f);
         var welcomeText = O5Factory.ControlText(welcomeTextRow, 14f, true);
-        welcomeText.text = "HUD 모듈을 배치하고 세부 설정을 조정한 뒤 플레이를 이어가세요.\n변경 사항은 로컬에 저장되며 각 기능은 독립적으로 동작합니다.";
+        welcomeText.text = L.T("overview.welcome.body");
         welcomeText.color = new Color32(183, 185, 202, 255);
         welcomeText.characterSpacing = 0f;
         welcomeText.textWrappingMode = TextWrappingModes.Normal;
         welcomeText.alignment = TextAlignmentOptions.TopLeft;
-        AddButtonRow(welcome, "HUD 모듈 설정 열기", () => ShowPage("hud"), "overview.open-hud");
+        AddButtonRow(welcome, L.T("overview.open-hud"), () => ShowPage("hud"), "overview.open-hud");
 
-        AddSection(page, "현재 작업 공간", "활성화된 HUD와 키뷰어 구성을 한눈에 확인합니다.");
+        AddSection(page, L.T("overview.workspace.title"), L.T("overview.workspace.subtitle"));
         var statRow = O5Factory.Row(page, 104f);
         var statLayout = statRow.gameObject.AddComponent<HorizontalLayoutGroup>();
         statLayout.spacing = 12f;
@@ -396,11 +400,11 @@ internal sealed class ArgonHost : MonoBehaviour
         var enabledModules = _hudRuntime?.ActiveElements.Count(element => element.Enabled) ?? 0;
         var layoutCount = _hudRuntime?.Layouts.Count ?? 0;
         var keySettings = _store!.Document.Preferences.KeyViewer;
-        AddStatCard(statRow, "활성 HUD", enabledModules.ToString(), "켜진 모듈");
-        AddStatCard(statRow, "키 레인", keySettings.HandKeyCount + " + " + keySettings.FootKeyCount, "손 키 + 발 키");
-        AddStatCard(statRow, "레이아웃", layoutCount.ToString(), "저장된 프로필");
+        AddStatCard(statRow, L.T("overview.stat.hud"), enabledModules.ToString(), L.T("overview.stat.hud-caption"));
+        AddStatCard(statRow, L.T("overview.stat.lanes"), keySettings.HandKeyCount + " + " + keySettings.FootKeyCount, L.T("overview.stat.lanes-caption"));
+        AddStatCard(statRow, L.T("nav.layout"), layoutCount.ToString(), L.T("overview.stat.layouts-caption"));
 
-        AddSection(page, "빠른 이동", "자주 사용하는 편집 화면을 바로 엽니다.");
+        AddSection(page, L.T("overview.quick.title"), L.T("overview.quick.subtitle"));
         var quickRow = O5Factory.Row(page, 48f);
         var quickLayout = quickRow.gameObject.AddComponent<HorizontalLayoutGroup>();
         quickLayout.spacing = 10f;
@@ -408,9 +412,9 @@ internal sealed class ArgonHost : MonoBehaviour
         quickLayout.childControlHeight = true;
         quickLayout.childForceExpandWidth = true;
         quickLayout.childForceExpandHeight = false;
-        AddButtonRow(quickRow, "키뷰어 편집", () => ShowPage("keyviewer"), "overview.open-keyviewer");
-        AddButtonRow(quickRow, "레이아웃 관리", () => ShowPage("layout"), "overview.open-layouts");
-        AddButtonRow(quickRow, "게임 외형", () => ShowPage("appearance"), "overview.open-appearance");
+        AddButtonRow(quickRow, L.T("overview.open-keyviewer"), () => ShowPage("keyviewer"), "overview.open-keyviewer");
+        AddButtonRow(quickRow, L.T("overview.open-layouts"), () => ShowPage("layout"), "overview.open-layouts");
+        AddButtonRow(quickRow, L.T("nav.appearance"), () => ShowPage("appearance"), "overview.open-appearance");
     }
 
     private RectTransform CreateSettingsCard(Transform parent, string title, string description)
@@ -480,13 +484,13 @@ internal sealed class ArgonHost : MonoBehaviour
 
     private void BuildHudPage(RectTransform page)
     {
-        var moduleCard = CreateSettingsCard(page, "HUD 모듈", "카드에서 모듈을 켜고 끄거나 배치 옵션을 엽니다.");
+        var moduleCard = CreateSettingsCard(page, L.T("hud.modules.title"), L.T("hud.modules.subtitle"));
         var editToggle = O5Factory.Toggle(
             moduleCard,
             false,
             _editingHud,
             SetHudEditMode,
-            "HUD 배치 편집 모드",
+            L.T("hud.edit-mode"),
             "argon.hud.edit-mode");
         _hudEditToggle = editToggle;
         Track(editToggle);
@@ -495,7 +499,7 @@ internal sealed class ArgonHost : MonoBehaviour
                        ?? Array.Empty<HudElementLayoutData>();
         if (elements.Length == 0)
         {
-            AddSection(moduleCard, "등록된 모듈 없음", "사용할 수 있는 HUD 요소가 없습니다.");
+            AddSection(moduleCard, L.T("hud.modules.empty.title"), L.T("hud.modules.empty.body"));
         }
         else
         {
@@ -521,23 +525,23 @@ internal sealed class ArgonHost : MonoBehaviour
             }
         }
 
-        var metricsCard = CreateSettingsCard(page, "진행도 및 정보", "플레이 중 HUD에 표시할 진행 상황, 기록 및 상태 정보를 선택합니다.");
+        var metricsCard = CreateSettingsCard(page, L.T("hud.metrics.title"), L.T("hud.metrics.subtitle"));
         var preferences = _store!.Document.Preferences.Hud;
-        AddPreferenceToggle(metricsCard, "잠재 정확도 / 점수", preferences.ShowPotentialValues, value => preferences.ShowPotentialValues = value, "hud.potential");
-        AddPreferenceToggle(metricsCard, "절대 정확도", preferences.ShowAbsoluteAccuracy, value => preferences.ShowAbsoluteAccuracy = value, "hud.absolute-accuracy");
+        AddPreferenceToggle(metricsCard, L.T("hud.potential"), preferences.ShowPotentialValues, value => preferences.ShowPotentialValues = value, "hud.potential");
+        AddPreferenceToggle(metricsCard, L.T("hud.absolute-accuracy"), preferences.ShowAbsoluteAccuracy, value => preferences.ShowAbsoluteAccuracy = value, "hud.absolute-accuracy");
         AddPreferenceToggle(metricsCard, "X-Score", preferences.ShowXScore, value => preferences.ShowXScore = value, "hud.xscore");
-        AddPreferenceToggle(metricsCard, "음악 시간 (음악이 없으면 맵 시간)", preferences.ShowMusicTime, value => preferences.ShowMusicTime = value, "hud.music-time");
-        AddPreferenceToggle(metricsCard, "맵 시간", preferences.ShowMapTime, value => preferences.ShowMapTime = value, "hud.map-time");
-        AddPreferenceToggle(metricsCard, "체크포인트", preferences.ShowCheckpoint, value => preferences.ShowCheckpoint = value, "hud.checkpoint");
-        AddPreferenceToggle(metricsCard, "최고 진행 기록", preferences.ShowBestProgress, value => preferences.ShowBestProgress = value, "hud.best");
-        AddPreferenceToggle(metricsCard, "시도 횟수 / 사망 횟수", preferences.ShowAttempts, value => preferences.ShowAttempts = value, "hud.attempts");
-        AddPreferenceToggle(metricsCard, "곡 제작자 표시", preferences.ShowAuthor, value => preferences.ShowAuthor = value, "hud.author");
-        AddPreferenceToggle(metricsCard, "게임 상태 표시", preferences.ShowState, value => preferences.ShowState = value, "hud.state");
-        AddPreferenceToggle(metricsCard, "사망 횟수 표시", preferences.ShowDeath, value => preferences.ShowDeath = value, "hud.death");
-        AddPreferenceToggle(metricsCard, "체크포인트 시작 위치 표시", preferences.ShowStart, value => preferences.ShowStart = value, "hud.start");
-        AddPreferenceToggle(metricsCard, "AUTO 중 HUD 숨김", preferences.HideHudDuringAuto, value => preferences.HideHudDuringAuto = value, "hud.hide-auto");
-        AddPreferenceToggle(metricsCard, "타일 각도 표시", preferences.ShowTileInfo, value => preferences.ShowTileInfo = value, "hud.tile-info");
-        AddPreferenceToggle(metricsCard, "디버그 텍스트 숨김 요청", preferences.HideDebugText, value => preferences.HideDebugText = value, "hud.hide-debug");
+        AddPreferenceToggle(metricsCard, L.T("hud.music-time"), preferences.ShowMusicTime, value => preferences.ShowMusicTime = value, "hud.music-time");
+        AddPreferenceToggle(metricsCard, L.T("hud.map-time"), preferences.ShowMapTime, value => preferences.ShowMapTime = value, "hud.map-time");
+        AddPreferenceToggle(metricsCard, L.T("hud.checkpoint"), preferences.ShowCheckpoint, value => preferences.ShowCheckpoint = value, "hud.checkpoint");
+        AddPreferenceToggle(metricsCard, L.T("hud.best"), preferences.ShowBestProgress, value => preferences.ShowBestProgress = value, "hud.best");
+        AddPreferenceToggle(metricsCard, L.T("hud.attempts"), preferences.ShowAttempts, value => preferences.ShowAttempts = value, "hud.attempts");
+        AddPreferenceToggle(metricsCard, L.T("hud.author"), preferences.ShowAuthor, value => preferences.ShowAuthor = value, "hud.author");
+        AddPreferenceToggle(metricsCard, L.T("hud.state"), preferences.ShowState, value => preferences.ShowState = value, "hud.state");
+        AddPreferenceToggle(metricsCard, L.T("hud.death"), preferences.ShowDeath, value => preferences.ShowDeath = value, "hud.death");
+        AddPreferenceToggle(metricsCard, L.T("hud.start"), preferences.ShowStart, value => preferences.ShowStart = value, "hud.start");
+        AddPreferenceToggle(metricsCard, L.T("hud.hide-auto"), preferences.HideHudDuringAuto, value => preferences.HideHudDuringAuto = value, "hud.hide-auto");
+        AddPreferenceToggle(metricsCard, L.T("hud.tile-info"), preferences.ShowTileInfo, value => preferences.ShowTileInfo = value, "hud.tile-info");
+        AddPreferenceToggle(metricsCard, L.T("hud.hide-debug"), preferences.HideDebugText, value => preferences.HideDebugText = value, "hud.hide-debug");
     }
 
     private void AddHudModuleCard(Transform parent, HudElementLayoutData element)
@@ -597,7 +601,7 @@ internal sealed class ArgonHost : MonoBehaviour
             _selectedElementId = capturedId;
             _activePage = "layout";
             BuildWindowContent();
-        }, "배치 옵션", "argon.hud.options." + capturedId);
+        }, L.T("hud.placement-options"), "argon.hud.options." + capturedId);
         SetCompactButton(options, 34f, new Color32(54, 55, 72, 255));
 
         var enabled = element.Enabled;
@@ -608,7 +612,7 @@ internal sealed class ArgonHost : MonoBehaviour
             _hudRuntime?.SetEnabled(capturedId, enabled);
             if (stateButton?.Label != null)
             {
-                stateButton.Label.text = enabled ? "사용 중" : "꺼짐";
+                stateButton.Label.text = enabled ? L.T("common.on") : L.T("common.off");
             }
             if (stateButton != null)
             {
@@ -620,7 +624,7 @@ internal sealed class ArgonHost : MonoBehaviour
             iconImage.color = enabled
                 ? new Color32(112, 94, 197, 255)
                 : new Color32(66, 67, 83, 255);
-        }, enabled ? "사용 중" : "꺼짐", "argon.hud.enabled." + capturedId);
+        }, enabled ? L.T("common.on") : L.T("common.off"), "argon.hud.enabled." + capturedId);
         SetCompactButton(stateButton, 34f, enabled
             ? new Color32(40, 133, 91, 255)
             : new Color32(84, 48, 61, 255));
@@ -656,47 +660,47 @@ internal sealed class ArgonHost : MonoBehaviour
     private void BuildHudDetailsPage(RectTransform page)
     {
         var preferences = _store!.Document.Preferences.Hud;
-        var judgementCard = CreateSettingsCard(page, "판정 및 콤보", "판정 피드백과 콤보 집계 기준을 설정합니다.");
-        AddPreferenceToggle(judgementCard, "콤보 표시", preferences.ShowCombo, value => preferences.ShowCombo = value, "hud.combo");
-        AddPreferenceToggle(judgementCard, "Pure Perfect 콤보 표시", preferences.ShowPurePerfectCombo, value => preferences.ShowPurePerfectCombo = value, "hud.pure-combo");
-        AddPreferenceToggle(judgementCard, "자동 판정을 콤보에 포함", preferences.CountAutoInCombo, value => preferences.CountAutoInCombo = value, "hud.auto-combo");
-        AddDropdown(judgementCard, 1, preferences.ComboMinimumTier, new[] { 0, 1, 2 }, value => value switch { 0 => "XPerfect만", 1 => "Perfect± 이상", _ => "Early/Late Perfect 이상" }, value => preferences.ComboMinimumTier = value, "hud.combo-tier");
-        AddPreferenceToggle(judgementCard, "현재 판정 표시", preferences.ShowJudgement, value => preferences.ShowJudgement = value, "hud.judgement");
-        AddPreferenceToggle(judgementCard, "타이밍 / 평균 타이밍 표시", preferences.ShowTiming, value => preferences.ShowTiming = value, "hud.timing");
-        AddPreferenceToggle(judgementCard, "타이밍 스케일 표시", preferences.ShowTimingScale, value => preferences.ShowTimingScale = value, "hud.timing-scale");
-        AddPreferenceToggle(judgementCard, "고속 맵 의사 BPM 계산", preferences.UsePseudoBpm, value => preferences.UsePseudoBpm = value, "hud.pseudo-bpm");
+        var judgementCard = CreateSettingsCard(page, L.T("hud.judgement.title"), L.T("hud.judgement.subtitle"));
+        AddPreferenceToggle(judgementCard, L.T("hud.combo"), preferences.ShowCombo, value => preferences.ShowCombo = value, "hud.combo");
+        AddPreferenceToggle(judgementCard, L.T("hud.pure-combo"), preferences.ShowPurePerfectCombo, value => preferences.ShowPurePerfectCombo = value, "hud.pure-combo");
+        AddPreferenceToggle(judgementCard, L.T("hud.auto-combo"), preferences.CountAutoInCombo, value => preferences.CountAutoInCombo = value, "hud.auto-combo");
+        AddDropdown(judgementCard, 1, preferences.ComboMinimumTier, new[] { 0, 1, 2 }, value => value switch { 0 => L.T("hud.combo-tier.0"), 1 => L.T("hud.combo-tier.1"), _ => L.T("hud.combo-tier.2") }, value => preferences.ComboMinimumTier = value, "hud.combo-tier");
+        AddPreferenceToggle(judgementCard, L.T("hud.judgement"), preferences.ShowJudgement, value => preferences.ShowJudgement = value, "hud.judgement");
+        AddPreferenceToggle(judgementCard, L.T("hud.timing"), preferences.ShowTiming, value => preferences.ShowTiming = value, "hud.timing");
+        AddPreferenceToggle(judgementCard, L.T("hud.timing-scale"), preferences.ShowTimingScale, value => preferences.ShowTimingScale = value, "hud.timing-scale");
+        AddPreferenceToggle(judgementCard, L.T("hud.pseudo-bpm"), preferences.UsePseudoBpm, value => preferences.UsePseudoBpm = value, "hud.pseudo-bpm");
 
-        var formatCard = CreateSettingsCard(page, "숫자 및 타이밍", "숫자 표시 정밀도와 타이밍 색상 범위를 조정합니다.");
-        AddSlider(formatCard, "정확도 소수 자릿수", 2f, 0f, 4f, preferences.AccuracyDecimals, value => preferences.AccuracyDecimals = Mathf.RoundToInt(value), "hud.accuracy-decimals", "F0");
-        AddSlider(formatCard, "진행도 소수 자릿수", 2f, 0f, 4f, preferences.ProgressDecimals, value => preferences.ProgressDecimals = Mathf.RoundToInt(value), "hud.progress-decimals", "F0");
-        AddSlider(formatCard, "BPM 소수 자릿수", 2f, 0f, 4f, preferences.BpmDecimals, value => preferences.BpmDecimals = Mathf.RoundToInt(value), "hud.bpm-decimals", "F0");
-        AddSlider(formatCard, "타이밍 소수 자릿수", 2f, 0f, 5f, preferences.TimingDecimals, value => preferences.TimingDecimals = Mathf.RoundToInt(value), "hud.timing-decimals", "F0");
-        AddSlider(formatCard, "타이밍 그라데이션 범위 (ms)", 150f, 10f, 1000f, preferences.TimingScaleMilliseconds, value => preferences.TimingScaleMilliseconds = value, "hud.timing-range", "F0");
-        AddSlider(formatCard, "콤보 색상 최대값", 1000f, 1f, 10000f, preferences.ComboColorMax, value => preferences.ComboColorMax = Mathf.RoundToInt(value), "hud.combo-color-max", "F0");
+        var formatCard = CreateSettingsCard(page, L.T("hud.format.title"), L.T("hud.format.subtitle"));
+        AddSlider(formatCard, L.T("hud.accuracy-decimals"), 2f, 0f, 4f, preferences.AccuracyDecimals, value => preferences.AccuracyDecimals = Mathf.RoundToInt(value), "hud.accuracy-decimals", "F0");
+        AddSlider(formatCard, L.T("hud.progress-decimals"), 2f, 0f, 4f, preferences.ProgressDecimals, value => preferences.ProgressDecimals = Mathf.RoundToInt(value), "hud.progress-decimals", "F0");
+        AddSlider(formatCard, L.T("hud.bpm-decimals"), 2f, 0f, 4f, preferences.BpmDecimals, value => preferences.BpmDecimals = Mathf.RoundToInt(value), "hud.bpm-decimals", "F0");
+        AddSlider(formatCard, L.T("hud.timing-decimals"), 2f, 0f, 5f, preferences.TimingDecimals, value => preferences.TimingDecimals = Mathf.RoundToInt(value), "hud.timing-decimals", "F0");
+        AddSlider(formatCard, L.T("hud.timing-range"), 150f, 10f, 1000f, preferences.TimingScaleMilliseconds, value => preferences.TimingScaleMilliseconds = value, "hud.timing-range", "F0");
+        AddSlider(formatCard, L.T("hud.combo-color-max"), 1000f, 1f, 10000f, preferences.ComboColorMax, value => preferences.ComboColorMax = Mathf.RoundToInt(value), "hud.combo-color-max", "F0");
     }
 
     private void BuildHudColorsPage(RectTransform page)
     {
         var preferences = _store!.Document.Preferences.Hud;
-        var colorCard = CreateSettingsCard(page, "색상", "HUD 그라데이션, 판정 등급, 진행 바 색상을 세부 조정합니다.");
-        AddPreferenceToggle(colorCard, "HUD 값 색상 그라데이션", preferences.UseColorGradients, value => preferences.UseColorGradients = value, "hud.gradient-enabled");
-        AddColorPicker(colorCard, "진행도 낮음 색상", preferences.ProgressLowColor, value => preferences.ProgressLowColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progress-low");
-        AddColorPicker(colorCard, "진행도 중간 색상", preferences.ProgressMidColor, value => preferences.ProgressMidColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progress-mid");
-        AddColorPicker(colorCard, "진행도 높음 색상", preferences.ProgressHighColor, value => preferences.ProgressHighColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progress-high");
-        AddColorPicker(colorCard, "BPM 낮음 색상", preferences.BpmLowColor, value => preferences.BpmLowColor = ColorUtility.ToHtmlStringRGBA(value), "hud.bpm-low");
-        AddColorPicker(colorCard, "BPM 중간 색상", preferences.BpmMidColor, value => preferences.BpmMidColor = ColorUtility.ToHtmlStringRGBA(value), "hud.bpm-mid");
-        AddColorPicker(colorCard, "BPM 높음 색상", preferences.BpmHighColor, value => preferences.BpmHighColor = ColorUtility.ToHtmlStringRGBA(value), "hud.bpm-high");
-        AddColorPicker(colorCard, "타이밍 안정 색상", preferences.TimingGoodColor, value => preferences.TimingGoodColor = ColorUtility.ToHtmlStringRGBA(value), "hud.timing-good");
-        AddColorPicker(colorCard, "타이밍 오차 색상", preferences.TimingBadColor, value => preferences.TimingBadColor = ColorUtility.ToHtmlStringRGBA(value), "hud.timing-bad");
-        AddColorPicker(colorCard, "콤보 시작 색상", preferences.ComboLowColor, value => preferences.ComboLowColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-low");
-        AddColorPicker(colorCard, "콤보 최대 색상", preferences.ComboHighColor, value => preferences.ComboHighColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-high");
-        AddColorPicker(colorCard, "Perfect 등급 색상", preferences.ComboPerfectColor, value => preferences.ComboPerfectColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-perfect");
-        AddColorPicker(colorCard, "Early/Late 등급 색상", preferences.ComboEarlyLateColor, value => preferences.ComboEarlyLateColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-early-late");
-        AddColorPicker(colorCard, "Pure Perfect 콤보 색상", preferences.PurePerfectColor, value => preferences.PurePerfectColor = ColorUtility.ToHtmlStringRGBA(value), "hud.pure-perfect-color");
-        AddColorPicker(colorCard, "진행 바 채움 색상", preferences.ProgressBarFillColor, value => preferences.ProgressBarFillColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progressbar-fill");
-        AddColorPicker(colorCard, "진행 바 배경 색상", preferences.ProgressBarBackgroundColor, value => preferences.ProgressBarBackgroundColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progressbar-background");
-        AddColorPicker(colorCard, "진행 바 테두리 색상", preferences.ProgressBarBorderColor, value => preferences.ProgressBarBorderColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progressbar-border");
-        AddColorPicker(colorCard, "기본 HUD 글자 색상", preferences.TextColor, value => preferences.TextColor = ColorUtility.ToHtmlStringRGBA(value), "hud.text-color");
+        var colorCard = CreateSettingsCard(page, L.T("hud.colors.title"), L.T("hud.colors.subtitle"));
+        AddPreferenceToggle(colorCard, L.T("hud.gradient-enabled"), preferences.UseColorGradients, value => preferences.UseColorGradients = value, "hud.gradient-enabled");
+        AddColorPicker(colorCard, L.T("hud.progress-low"), preferences.ProgressLowColor, value => preferences.ProgressLowColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progress-low");
+        AddColorPicker(colorCard, L.T("hud.progress-mid"), preferences.ProgressMidColor, value => preferences.ProgressMidColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progress-mid");
+        AddColorPicker(colorCard, L.T("hud.progress-high"), preferences.ProgressHighColor, value => preferences.ProgressHighColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progress-high");
+        AddColorPicker(colorCard, L.T("hud.bpm-low"), preferences.BpmLowColor, value => preferences.BpmLowColor = ColorUtility.ToHtmlStringRGBA(value), "hud.bpm-low");
+        AddColorPicker(colorCard, L.T("hud.bpm-mid"), preferences.BpmMidColor, value => preferences.BpmMidColor = ColorUtility.ToHtmlStringRGBA(value), "hud.bpm-mid");
+        AddColorPicker(colorCard, L.T("hud.bpm-high"), preferences.BpmHighColor, value => preferences.BpmHighColor = ColorUtility.ToHtmlStringRGBA(value), "hud.bpm-high");
+        AddColorPicker(colorCard, L.T("hud.timing-good"), preferences.TimingGoodColor, value => preferences.TimingGoodColor = ColorUtility.ToHtmlStringRGBA(value), "hud.timing-good");
+        AddColorPicker(colorCard, L.T("hud.timing-bad"), preferences.TimingBadColor, value => preferences.TimingBadColor = ColorUtility.ToHtmlStringRGBA(value), "hud.timing-bad");
+        AddColorPicker(colorCard, L.T("hud.combo-low"), preferences.ComboLowColor, value => preferences.ComboLowColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-low");
+        AddColorPicker(colorCard, L.T("hud.combo-high"), preferences.ComboHighColor, value => preferences.ComboHighColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-high");
+        AddColorPicker(colorCard, L.T("hud.combo-perfect"), preferences.ComboPerfectColor, value => preferences.ComboPerfectColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-perfect");
+        AddColorPicker(colorCard, L.T("hud.combo-early-late"), preferences.ComboEarlyLateColor, value => preferences.ComboEarlyLateColor = ColorUtility.ToHtmlStringRGBA(value), "hud.combo-early-late");
+        AddColorPicker(colorCard, L.T("hud.pure-perfect-color"), preferences.PurePerfectColor, value => preferences.PurePerfectColor = ColorUtility.ToHtmlStringRGBA(value), "hud.pure-perfect-color");
+        AddColorPicker(colorCard, L.T("hud.progressbar-fill"), preferences.ProgressBarFillColor, value => preferences.ProgressBarFillColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progressbar-fill");
+        AddColorPicker(colorCard, L.T("hud.progressbar-background"), preferences.ProgressBarBackgroundColor, value => preferences.ProgressBarBackgroundColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progressbar-background");
+        AddColorPicker(colorCard, L.T("hud.progressbar-border"), preferences.ProgressBarBorderColor, value => preferences.ProgressBarBorderColor = ColorUtility.ToHtmlStringRGBA(value), "hud.progressbar-border");
+        AddColorPicker(colorCard, L.T("hud.text-color"), preferences.TextColor, value => preferences.TextColor = ColorUtility.ToHtmlStringRGBA(value), "hud.text-color");
     }
 
     private void BuildKeyViewerPage(RectTransform page)
@@ -734,7 +738,7 @@ internal sealed class ArgonHost : MonoBehaviour
 
         var titleRow = O5Factory.Row(canvas, 40f);
         var canvasTitle = O5Factory.ControlText(titleRow, 12f, true);
-        canvasTitle.text = "  키뷰어 작업공간";
+        canvasTitle.text = L.T("keyviewer.canvas.title");
         canvasTitle.rectTransform.offsetMax = new Vector2(-150f, 0f);
         canvasTitle.font = O5Boot.Fonts.Medium;
         canvasTitle.color = new Color32(170, 169, 190, 255);
@@ -777,7 +781,7 @@ internal sealed class ArgonHost : MonoBehaviour
         if (settings.FootKeyCount > 0) BuildEditorPreviewKeys(viewportRect, settings.FootKeyCount, true);
         var canvasFooter = O5Factory.Row(canvas, 24f);
         var hint = O5Factory.ControlText(canvasFooter, 11f, true);
-        hint.text = "  휠: 확대/축소 · 가운데 드래그: 화면 이동 · Ctrl+Z / Ctrl+Shift+Z: 배치 취소/복원 · Alt: 스냅 해제";
+        hint.text = L.T("keyviewer.canvas.hint");
         hint.textWrappingMode = TextWrappingModes.Normal;
         hint.color = new Color32(137, 139, 159, 255);
         hint.characterSpacing = 0f;
@@ -986,12 +990,12 @@ internal sealed class ArgonHost : MonoBehaviour
         layout.childForceExpandHeight = true;
 
         var caption = O5Factory.ControlText(toolbar, 12f, true);
-        caption.text = "배치";
+        caption.text = L.T("keyviewer.toolbar.layout");
         caption.font = O5Boot.Fonts.Medium;
         caption.color = new Color32(158, 159, 180, 255);
         var captionLayout = caption.gameObject.AddComponent<LayoutElement>();
         captionLayout.minWidth = captionLayout.preferredWidth = 52f;
-        var back = O5Factory.Button(toolbar, () => ShowPage("overview"), "돌아가기", "keyviewer.editor.back");
+        var back = O5Factory.Button(toolbar, () => ShowPage("overview"), L.T("keyviewer.toolbar.back"), "keyviewer.editor.back");
         back.Rect.SetAsFirstSibling();
         back.Rect.GetComponent<LayoutElement>().preferredWidth = 80f;
         FitEditorButtonText(back, 12f);
@@ -1008,7 +1012,7 @@ internal sealed class ArgonHost : MonoBehaviour
                 _selectedKeyFoot = false;
                 BuildWindowContent();
                 FitEditorToKeys();
-            }, count + "키", "keyviewer.editor.layout." + count);
+            }, L.F("keyviewer.key-count", count), "keyviewer.editor.layout." + count);
             button.NormalColor = selected ? new Color32(75, 63, 114, 255) : O5Boot.Theme.ObjectButton;
             FitEditorButtonText(button, 13f);
             button.UpdateVisual(true);
@@ -1035,7 +1039,7 @@ internal sealed class ArgonHost : MonoBehaviour
             RefreshEditorPreviewLayout();
             RefreshKeyInspector();
         },
-            "초기화", "keyviewer.editor.reset-slot");
+            L.T("keyviewer.toolbar.reset"), "keyviewer.editor.reset-slot");
         reset.NormalColor = O5Boot.Theme.ObjectButton;
         FitEditorButtonText(reset, 12f);
         reset.UpdateVisual(true);
@@ -1047,15 +1051,15 @@ internal sealed class ArgonHost : MonoBehaviour
         }
         Track(reset);
 
-        AddEditorToolButton(toolbar, "선택", "select", () => SetKeyViewerEditorTab(0));
-        AddEditorToolButton(toolbar, "이동", "pan", null);
-        AddEditorToolButton(toolbar, "맞춤", "fit", FitEditorToKeys);
-        AddEditorToolButton(toolbar, _editorSnap ? "스냅 ON" : "스냅 OFF", "snap", () => { _editorSnap = !_editorSnap; BuildWindowContent(); });
-        AddEditorToolButton(toolbar, "배치취소", "undo", () => RestoreEditorGeometry(false));
-        AddEditorToolButton(toolbar, "다시실행", "redo", () => RestoreEditorGeometry(true));
-        AddEditorToolButton(toolbar, "설정", "settings", () => SetKeyViewerEditorTab(3));
+        AddEditorToolButton(toolbar, L.T("keyviewer.tool.select"), "select", () => SetKeyViewerEditorTab(0));
+        AddEditorToolButton(toolbar, L.T("keyviewer.tool.pan"), "pan", null);
+        AddEditorToolButton(toolbar, L.T("keyviewer.tool.fit"), "fit", FitEditorToKeys);
+        AddEditorToolButton(toolbar, _editorSnap ? L.T("keyviewer.tool.snap-on") : L.T("keyviewer.tool.snap-off"), "snap", () => { _editorSnap = !_editorSnap; BuildWindowContent(); });
+        AddEditorToolButton(toolbar, L.T("keyviewer.tool.undo"), "undo", () => RestoreEditorGeometry(false));
+        AddEditorToolButton(toolbar, L.T("keyviewer.tool.redo"), "redo", () => RestoreEditorGeometry(true));
+        AddEditorToolButton(toolbar, L.T("nav.group.settings"), "settings", () => SetKeyViewerEditorTab(3));
         var enabled = O5Factory.Toggle(toolbar, true, _store!.Document.Preferences.KeyViewerEnabled,
-            value => _keyViewer?.SetEnabled(value), "뷰어", "argon.keyviewer.enabled");
+            value => _keyViewer?.SetEnabled(value), L.T("keyviewer.toolbar.viewer"), "argon.keyviewer.enabled");
         enabled.Label.characterSpacing = 0f;
         enabled.Label.textWrappingMode = TextWrappingModes.NoWrap;
         enabled.Label.overflowMode = TextOverflowModes.Ellipsis;
@@ -1174,8 +1178,8 @@ internal sealed class ArgonHost : MonoBehaviour
         }
 
         var selectedName = selectedChoice == null
-            ? "키 선택"
-            : _keyViewer?.GetSlotLabel(selectedChoice.Index, selectedChoice.IsFoot, _editingGhostBindings) ?? "키 선택";
+            ? L.T("keyviewer.select-key")
+            : _keyViewer?.GetSlotLabel(selectedChoice.Index, selectedChoice.IsFoot, _editingGhostBindings) ?? L.T("keyviewer.select-key");
         var selectedRow = O5Factory.Row(header, 42f);
         _editorSelectedName = O5Factory.ControlText(selectedRow, 18f, true);
         _editorSelectedName.text = selectedName;
@@ -1194,7 +1198,7 @@ internal sealed class ArgonHost : MonoBehaviour
         tabsLayout.childControlHeight = true;
         tabsLayout.childForceExpandWidth = true;
         tabsLayout.childForceExpandHeight = true;
-        var tabLabels = new[] { "키", "노트", "카운터", "설정" };
+        var tabLabels = new[] { L.T("keyviewer.tab.key"), L.T("keyviewer.tab.notes"), L.T("keyviewer.tab.counter"), L.T("nav.group.settings") };
         for (var index = 0; index < tabLabels.Length; index++)
         {
             var tabIndex = index;
@@ -1265,7 +1269,7 @@ internal sealed class ArgonHost : MonoBehaviour
         parent = CreateInspectorCard(inspectorContent, "Mapping");
         var mappingTitle = O5Factory.Row(parent, 28f);
         var title = O5Factory.ControlText(mappingTitle, 13f, true);
-        title.text = "키 매핑";
+        title.text = L.T("keyviewer.mapping.title");
         title.color = new Color32(156, 157, 177, 255);
         title.font = O5Boot.Fonts.Medium;
 
@@ -1273,7 +1277,7 @@ internal sealed class ArgonHost : MonoBehaviour
         {
             _editingGhostBindings = value;
             BuildWindowContent();
-        }, "고스트 매핑 편집", "keyviewer.editor.ghost-binding");
+        }, L.T("keyviewer.edit-ghost"), "keyviewer.editor.ghost-binding");
         ConfigureToggleLabel(ghostToggle.Label, 13f, 48f);
         Track(ghostToggle);
 
@@ -1294,7 +1298,7 @@ internal sealed class ArgonHost : MonoBehaviour
         {
             if (selectedChoice == null) return;
             _keyViewer?.BeginCapture(selectedChoice.Index, selectedChoice.IsFoot, _editingGhostBindings);
-        }, "키 입력 지정", "keyviewer.editor.capture");
+        }, L.T("keyviewer.capture"), "keyviewer.editor.capture");
         FitEditorButtonText(capture, 13f);
         Track(capture);
         var labelInput = O5Factory.Input(parent, null,
@@ -1304,7 +1308,7 @@ internal sealed class ArgonHost : MonoBehaviour
                 if (selectedChoice == null) return;
                 _keyViewer?.SetSlotLabel(selectedChoice.Index, selectedChoice.IsFoot, _editingGhostBindings, value);
                 keyDropdown?.Set(selectedChoice, false);
-            }, "표시 이름", null, "keyviewer.editor.display-name");
+            }, L.T("keyviewer.display-name"), null, "keyviewer.editor.display-name");
         Track(labelInput);
         _keyBindingLabelInput = labelInput;
         var captureRow = O5Factory.Row(parent, 30f);
@@ -1318,26 +1322,26 @@ internal sealed class ArgonHost : MonoBehaviour
         var offset = _keyViewer.GetSlotOffset(selectedChoice.Index, selectedChoice.IsFoot);
         var size = _keyViewer.GetSlotSize(selectedChoice.Index, selectedChoice.IsFoot);
         parent = CreateInspectorCard(inspectorContent, "Geometry");
-        AddInspectorSection(parent, "위치 및 크기", "캔버스에서 드래그하거나 값을 조정합니다.");
-        AddEditorNumber(parent, "위치 X", 0f, -1200f, 1200f, offset.x, value =>
+        AddInspectorSection(parent, L.T("keyviewer.geometry.title"), L.T("keyviewer.geometry.subtitle"));
+        AddEditorNumber(parent, L.T("keyviewer.x"), 0f, -1200f, 1200f, offset.x, value =>
         {
             _keyViewer.SetSlotOffset(selectedChoice.Index, selectedChoice.IsFoot,
                 new Vector2(value, _keyViewer.GetSlotOffset(selectedChoice.Index, selectedChoice.IsFoot).y), false);
             RefreshEditorPreviewLayout();
         }, "keyviewer.editor.x." + identity, "F0");
-        AddEditorNumber(parent, "위치 Y", 0f, -600f, 600f, offset.y, value =>
+        AddEditorNumber(parent, L.T("keyviewer.y"), 0f, -600f, 600f, offset.y, value =>
         {
             _keyViewer.SetSlotOffset(selectedChoice.Index, selectedChoice.IsFoot,
                 new Vector2(_keyViewer.GetSlotOffset(selectedChoice.Index, selectedChoice.IsFoot).x, value), false);
             RefreshEditorPreviewLayout();
         }, "keyviewer.editor.y." + identity, "F0");
-        AddEditorNumber(parent, "너비", size.x, 24f, 240f, size.x, value =>
+        AddEditorNumber(parent, L.T("common.width"), size.x, 24f, 240f, size.x, value =>
         {
             _keyViewer.SetSlotSize(selectedChoice.Index, selectedChoice.IsFoot,
                 new Vector2(value, _keyViewer.GetSlotSize(selectedChoice.Index, selectedChoice.IsFoot).y), false);
             RefreshEditorPreviewLayout();
         }, "keyviewer.editor.width." + identity, "F0");
-        AddEditorNumber(parent, "높이", size.y, 24f, 240f, size.y, value =>
+        AddEditorNumber(parent, L.T("common.height"), size.y, 24f, 240f, size.y, value =>
         {
             _keyViewer.SetSlotSize(selectedChoice.Index, selectedChoice.IsFoot,
                 new Vector2(_keyViewer.GetSlotSize(selectedChoice.Index, selectedChoice.IsFoot).x, value), false);
@@ -1350,70 +1354,70 @@ internal sealed class ArgonHost : MonoBehaviour
             CommitEditorGeometry();
             RefreshEditorPreviewLayout();
             RefreshKeyInspector();
-        }, "위치·크기 초기화", "keyviewer.editor.reset-geometry." + identity);
+        }, L.T("keyviewer.reset-geometry"), "keyviewer.editor.reset-geometry." + identity);
         Track(reset);
         parent = CreateInspectorCard(inspectorContent, "Appearance");
-        AddSlider(parent, "테두리 두께", 1.5f, 0f, 12f,
+        AddSlider(parent, L.T("keyviewer.border-width"), 1.5f, 0f, 12f,
             _keyViewer.GetSlotBorderWidth(selectedChoice.Index, selectedChoice.IsFoot),
             value =>
             {
                 _keyViewer.SetSlotBorderWidth(selectedChoice.Index, selectedChoice.IsFoot, value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.border-width." + identity, "F1");
-        AddSlider(parent, "글자 크기", 15f, 8f, 48f,
+        AddSlider(parent, L.T("keyviewer.font-size"), 15f, 8f, 48f,
             _keyViewer.GetSlotFontSize(selectedChoice.Index, selectedChoice.IsFoot),
             value =>
             {
                 _keyViewer.SetSlotFontSize(selectedChoice.Index, selectedChoice.IsFoot, value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.font-size." + identity, "F0");
-        AddKeyColorPicker(parent, "배경색", _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "background"),
+        AddKeyColorPicker(parent, L.T("keyviewer.slot.background"), _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "background"),
             value => _keyViewer.SetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "background", value), "keyviewer.editor.background." + identity);
-        AddKeyColorPicker(parent, "눌림 배경색", _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-background"),
+        AddKeyColorPicker(parent, L.T("keyviewer.slot.pressed-background"), _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-background"),
             value => _keyViewer.SetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-background", value), "keyviewer.editor.pressed-background." + identity);
-        AddKeyColorPicker(parent, "테두리 색상", _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "outline"),
+        AddKeyColorPicker(parent, L.T("keyviewer.slot.outline"), _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "outline"),
             value => _keyViewer.SetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "outline", value), "keyviewer.editor.outline." + identity);
-        AddKeyColorPicker(parent, "눌림 테두리 색상", _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-outline"),
+        AddKeyColorPicker(parent, L.T("keyviewer.slot.pressed-outline"), _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-outline"),
             value => _keyViewer.SetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-outline", value), "keyviewer.editor.pressed-outline." + identity);
-        AddKeyColorPicker(parent, "글자 색상", _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "text"),
+        AddKeyColorPicker(parent, L.T("keyviewer.slot.text"), _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "text"),
             value => _keyViewer.SetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "text", value), "keyviewer.editor.text." + identity);
-        AddKeyColorPicker(parent, "눌림 글자 색상", _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-text"),
+        AddKeyColorPicker(parent, L.T("keyviewer.slot.pressed-text"), _keyViewer.GetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-text"),
             value => _keyViewer.SetSlotColor(selectedChoice.Index, selectedChoice.IsFoot, "pressed-text", value), "keyviewer.editor.pressed-text." + identity);
     }
 
     private void BuildKeyViewerNoteInspector(RectTransform parent, KeyViewerPreferences settings, KeyBindingChoice? selectedChoice)
     {
         parent = CreateInspectorCard(parent, "Note");
-        AddInspectorSection(parent, "노트 효과", "키 입력 시 캔버스에 표시할 레인 효과를 설정합니다.");
-        AddPreferenceToggle(parent, "일반 키 레인 효과", settings.ShowRain, value => _keyViewer?.SetRain(value), "keyviewer.editor.rain");
-        AddPreferenceToggle(parent, "고스트 키 레인 효과", settings.ShowGhostRain, value => _keyViewer?.SetGhostRain(value), "keyviewer.editor.ghost-rain");
+        AddInspectorSection(parent, L.T("keyviewer.notes.title"), L.T("keyviewer.notes.subtitle"));
+        AddPreferenceToggle(parent, L.T("keyviewer.rain"), settings.ShowRain, value => _keyViewer?.SetRain(value), "keyviewer.editor.rain");
+        AddPreferenceToggle(parent, L.T("keyviewer.ghost-rain"), settings.ShowGhostRain, value => _keyViewer?.SetGhostRain(value), "keyviewer.editor.ghost-rain");
         if (selectedChoice != null && _keyViewer != null)
         {
-            AddPreferenceToggle(parent, "선택 키의 노트 효과", _keyViewer.GetSlotNoteEffect(selectedChoice.Index, selectedChoice.IsFoot),
+            AddPreferenceToggle(parent, L.T("keyviewer.slot-note-effect"), _keyViewer.GetSlotNoteEffect(selectedChoice.Index, selectedChoice.IsFoot),
                 value => _keyViewer.SetSlotNoteEffect(selectedChoice.Index, selectedChoice.IsFoot, value),
                 "keyviewer.editor.slot-note-effect." + (selectedChoice.IsFoot ? "foot" : "hand") + "." + selectedChoice.Index);
         }
-        AddSlider(parent, "레인 속도", 100f, 10f, 600f, settings.RainSpeed,
+        AddSlider(parent, L.T("keyviewer.rain-speed"), 100f, 10f, 600f, settings.RainSpeed,
             value => _keyViewer?.SetRainSpeed(value, false), "keyviewer.editor.rain-speed", "F0", value => _keyViewer?.SetRainSpeed(value, false));
-        AddSlider(parent, "레인 길이", 200f, 20f, 1200f, settings.RainHeight,
+        AddSlider(parent, L.T("keyviewer.rain-height"), 200f, 20f, 1200f, settings.RainHeight,
             value => _keyViewer?.SetRainHeight(value, false), "keyviewer.editor.rain-height", "F0", value => _keyViewer?.SetRainHeight(value, false));
     }
 
     private void BuildKeyViewerCounterInspector(RectTransform parent, KeyViewerPreferences settings, KeyBindingChoice? selectedChoice)
     {
         parent = CreateInspectorCard(parent, "Counter");
-        AddInspectorSection(parent, "키 카운터", "각 키의 누른 횟수와 초당 입력 수를 표시합니다.");
-        AddPreferenceToggle(parent, "전체 KPS 표시", settings.ShowTotalKps,
+        AddInspectorSection(parent, L.T("keyviewer.counter.title"), L.T("keyviewer.counter.subtitle"));
+        AddPreferenceToggle(parent, L.T("keyviewer.show-kps"), settings.ShowTotalKps,
             value => settings.ShowTotalKps = value, "keyviewer.editor.total-kps");
         if (selectedChoice != null && _keyViewer != null)
         {
-            AddPreferenceToggle(parent, "선택 키의 카운터 표시",
+            AddPreferenceToggle(parent, L.T("keyviewer.slot-counter"),
                 _keyViewer.GetSlotCounterVisible(selectedChoice.Index, selectedChoice.IsFoot),
                 value => _keyViewer.SetSlotCounterVisible(selectedChoice.Index, selectedChoice.IsFoot, value),
                 "keyviewer.editor.slot-counter." + (selectedChoice.IsFoot ? "foot" : "hand") + "." + selectedChoice.Index);
         }
-        AddInspectorSection(parent, "현재 기록", "전체 및 슬롯별 입력 횟수는 로컬 설정에 저장됩니다.");
-        var reset = O5Factory.Button(parent, () => _keyViewer?.ResetCounts(), "입력 기록 초기화", "keyviewer.editor.reset-counts");
+        AddInspectorSection(parent, L.T("keyviewer.records.title"), L.T("keyviewer.records.subtitle"));
+        var reset = O5Factory.Button(parent, () => _keyViewer?.ResetCounts(), L.T("keyviewer.reset-counts"), "keyviewer.editor.reset-counts");
         Track(reset);
     }
 
@@ -1427,7 +1431,7 @@ internal sealed class ArgonHost : MonoBehaviour
     {
         var inspectorContent = parent;
         parent = CreateInspectorCard(inspectorContent, "Layout");
-        AddInspectorSection(parent, "기본 배치", "현재 손·발 키의 위치와 크기를 기본 배치로 복원합니다. 키 매핑과 색상은 유지됩니다.");
+        AddInspectorSection(parent, L.T("keyviewer.default-layout.title"), L.T("keyviewer.default-layout.subtitle"));
         var restore = O5Factory.Button(parent, () =>
         {
             if (_pendingGeometry != null) return;
@@ -1437,12 +1441,12 @@ internal sealed class ArgonHost : MonoBehaviour
             RefreshEditorPreviewLayout();
             FitEditorToKeys();
             RefreshKeyInspector();
-        }, "기본 배치 복원", "keyviewer.editor.restore-jrp");
+        }, L.T("keyviewer.restore-default"), "keyviewer.editor.restore-jrp");
         FitEditorButtonText(restore, 13f);
         Track(restore);
-        AddInspectorSection(parent, "화면 및 레이아웃", "전역 크기와 각 키 레인의 위치를 조정합니다.");
+        AddInspectorSection(parent, L.T("keyviewer.screen.title"), L.T("keyviewer.screen.subtitle"));
         AddDropdown(parent, 4, settings.FootKeyCount, FootKeyOptions,
-            value => value == 0 ? "발 키 없음" : value + "키", value =>
+            value => value == 0 ? L.T("keyviewer.no-foot-keys") : L.F("keyviewer.key-count", value), value =>
             {
                 _keyViewer?.SetFootKeyCount(value);
                 _undoGeometry.Clear();
@@ -1451,61 +1455,61 @@ internal sealed class ArgonHost : MonoBehaviour
                 _selectedKeySlot = Mathf.Clamp(_selectedKeySlot, 0, settings.HandKeyCount - 1);
                 BuildWindowContent();
             }, "keyviewer.editor.foot-count");
-        AddSlider(parent, "전체 배율", 1f, 0.25f, 3f, settings.Scale,
+        AddSlider(parent, L.T("keyviewer.scale"), 1f, 0.25f, 3f, settings.Scale,
             value => _keyViewer?.SetScale(value, false), "keyviewer.editor.scale", "F2",
             value => _keyViewer?.SetScale(value, false));
-        AddSlider(parent, "화면 세로 위치", 200f, 0f, 600f, settings.VerticalOffset,
+        AddSlider(parent, L.T("keyviewer.vertical-offset"), 200f, 0f, 600f, settings.VerticalOffset,
             value => _keyViewer?.SetVerticalOffset(value, false), "keyviewer.editor.vertical-offset", "F0",
             value => _keyViewer?.SetVerticalOffset(value, false));
-        AddSlider(parent, "기본 키 크기", 50f, 32f, 96f, settings.KeySize,
+        AddSlider(parent, L.T("keyviewer.key-size"), 50f, 32f, 96f, settings.KeySize,
             value =>
             {
                 _keyViewer?.SetKeySize(value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.key-size", "F0", value => _keyViewer?.SetKeySize(value, false));
-        AddSlider(parent, "손 레인 X", 0f, -1000f, 1000f, settings.HandOffsetX,
+        AddSlider(parent, L.T("keyviewer.hand-x"), 0f, -1000f, 1000f, settings.HandOffsetX,
             value =>
             {
                 _keyViewer?.SetHandOffsetX(value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.hand-x", "F0", value => _keyViewer?.SetHandOffsetX(value, false));
-        AddSlider(parent, "손 레인 Y", 0f, -300f, 300f, settings.HandOffsetY,
+        AddSlider(parent, L.T("keyviewer.hand-y"), 0f, -300f, 300f, settings.HandOffsetY,
             value =>
             {
                 _keyViewer?.SetHandOffsetY(value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.hand-y", "F0", value => _keyViewer?.SetHandOffsetY(value, false));
-        AddSlider(parent, "발 레인 X", 0f, -1000f, 1000f, settings.FootOffsetX,
+        AddSlider(parent, L.T("keyviewer.foot-x"), 0f, -1000f, 1000f, settings.FootOffsetX,
             value =>
             {
                 _keyViewer?.SetFootOffsetX(value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.foot-x", "F0", value => _keyViewer?.SetFootOffsetX(value, false));
-        AddSlider(parent, "발 레인 Y", 0f, -300f, 300f, settings.FootOffsetY,
+        AddSlider(parent, L.T("keyviewer.foot-y"), 0f, -300f, 300f, settings.FootOffsetY,
             value =>
             {
                 _keyViewer?.SetFootOffsetY(value, false);
                 RefreshEditorPreviewLayout();
             }, "keyviewer.editor.foot-y", "F0", value => _keyViewer?.SetFootOffsetY(value, false));
-        AddInspectorSection(parent, "입력 감지", "게임 입력을 읽어 표시합니다. 키 매핑은 게임의 허용 키를 변경하지 않습니다.");
+        AddInspectorSection(parent, L.T("keyviewer.input.title"), L.T("keyviewer.input.subtitle"));
 
         parent = CreateInspectorCard(inspectorContent, "Palette");
-        AddInspectorSection(parent, "전역 팔레트", "개별 키에서 별도 색을 지정하지 않은 경우 사용됩니다.");
-        AddKeyColorPicker(parent, "기본 배경", settings.BackgroundColor,
+        AddInspectorSection(parent, L.T("keyviewer.palette.title"), L.T("keyviewer.palette.subtitle"));
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.background"), settings.BackgroundColor,
             value => settings.BackgroundColor = value, "keyviewer.editor.global.background");
-        AddKeyColorPicker(parent, "눌림 배경", settings.PressedBackgroundColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.pressed-background"), settings.PressedBackgroundColor,
             value => settings.PressedBackgroundColor = value, "keyviewer.editor.global.pressed-background");
-        AddKeyColorPicker(parent, "테두리", settings.OutlineColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.outline"), settings.OutlineColor,
             value => settings.OutlineColor = value, "keyviewer.editor.global.outline");
-        AddKeyColorPicker(parent, "눌림 테두리", settings.PressedOutlineColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.pressed-outline"), settings.PressedOutlineColor,
             value => settings.PressedOutlineColor = value, "keyviewer.editor.global.pressed-outline");
-        AddKeyColorPicker(parent, "글자", settings.TextColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.text"), settings.TextColor,
             value => settings.TextColor = value, "keyviewer.editor.global.text");
-        AddKeyColorPicker(parent, "눌림 글자", settings.PressedTextColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.pressed-text"), settings.PressedTextColor,
             value => settings.PressedTextColor = value, "keyviewer.editor.global.pressed-text");
-        AddKeyColorPicker(parent, "노트 레인", settings.RainColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.rain"), settings.RainColor,
             value => settings.RainColor = value, "keyviewer.editor.global.rain");
-        AddKeyColorPicker(parent, "고스트 레인", settings.GhostRainColor,
+        AddKeyColorPicker(parent, L.T("keyviewer.palette.ghost-rain"), settings.GhostRainColor,
             value => settings.GhostRainColor = value, "keyviewer.editor.global.ghost-rain");
     }
 
@@ -1818,21 +1822,21 @@ internal sealed class ArgonHost : MonoBehaviour
     private void BuildKeyViewerStylePage(RectTransform page)
     {
         var settings = _store!.Document.Preferences.KeyViewer;
-        var effectsCard = CreateSettingsCard(page, "키 스타일 및 팔레트", "기본·눌림 상태와 레인 색상을 조정합니다.");
-        AddKeyColorPicker(effectsCard, "기본 배경 색상", settings.BackgroundColor, value => settings.BackgroundColor = value, "keyviewer.background");
-        AddKeyColorPicker(effectsCard, "눌림 배경 색상", settings.PressedBackgroundColor, value => settings.PressedBackgroundColor = value, "keyviewer.pressed-background");
-        AddKeyColorPicker(effectsCard, "외곽선 색상", settings.OutlineColor, value => settings.OutlineColor = value, "keyviewer.outline");
-        AddKeyColorPicker(effectsCard, "눌림 외곽선 색상", settings.PressedOutlineColor, value => settings.PressedOutlineColor = value, "keyviewer.pressed-outline");
-        AddKeyColorPicker(effectsCard, "글자 색상", settings.TextColor, value => settings.TextColor = value, "keyviewer.text");
-        AddKeyColorPicker(effectsCard, "눌림 글자 색상", settings.PressedTextColor, value => settings.PressedTextColor = value, "keyviewer.pressed-text");
-        AddKeyColorPicker(effectsCard, "일반 레인 색상", settings.RainColor, value => settings.RainColor = value, "keyviewer.rain-color");
-        AddKeyColorPicker(effectsCard, "고스트 레인 색상", settings.GhostRainColor, value => settings.GhostRainColor = value, "keyviewer.ghost-color");
+        var effectsCard = CreateSettingsCard(page, L.T("keyviewer.style.title"), L.T("keyviewer.style.subtitle"));
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.style.background"), settings.BackgroundColor, value => settings.BackgroundColor = value, "keyviewer.background");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.style.pressed-background"), settings.PressedBackgroundColor, value => settings.PressedBackgroundColor = value, "keyviewer.pressed-background");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.style.outline"), settings.OutlineColor, value => settings.OutlineColor = value, "keyviewer.outline");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.style.pressed-outline"), settings.PressedOutlineColor, value => settings.PressedOutlineColor = value, "keyviewer.pressed-outline");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.slot.text"), settings.TextColor, value => settings.TextColor = value, "keyviewer.text");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.slot.pressed-text"), settings.PressedTextColor, value => settings.PressedTextColor = value, "keyviewer.pressed-text");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.style.rain"), settings.RainColor, value => settings.RainColor = value, "keyviewer.rain-color");
+        AddKeyColorPicker(effectsCard, L.T("keyviewer.style.ghost-rain"), settings.GhostRainColor, value => settings.GhostRainColor = value, "keyviewer.ghost-color");
     }
 
     private void BuildKeyViewerMappingPage(RectTransform page)
     {
         var settings = _store!.Document.Preferences.KeyViewer;
-        var mappingCard = CreateSettingsCard(page, "키 매핑 편집기", "키를 재지정하고 화면에 표시할 사용자 지정 이름을 지정합니다.");
+        var mappingCard = CreateSettingsCard(page, L.T("keyviewer.mapping-editor.title"), L.T("keyviewer.mapping-editor.subtitle"));
         var choices = BuildBindingChoices();
         var selectedBindingChoice = choices.FirstOrDefault(choice => choice.Index == _selectedKeySlot && choice.IsFoot == _selectedKeyFoot)
                                     ?? choices.FirstOrDefault();
@@ -1858,7 +1862,7 @@ internal sealed class ArgonHost : MonoBehaviour
                 keyDropdown?.SetValues(choices);
                 if (_selectedBindingChoice != null) keyDropdown?.Set(_selectedBindingChoice, false);
             },
-            "고스트 키 매핑 편집",
+            L.T("keyviewer.edit-ghost-keys"),
             "keyviewer.edit-ghost");
         Track(ghostToggle);
 
@@ -1891,7 +1895,7 @@ internal sealed class ArgonHost : MonoBehaviour
             if (_selectedBindingChoice == null) return;
             _keyViewer?.BeginCapture(_selectedBindingChoice.Index, _selectedBindingChoice.IsFoot, _editingGhostBindings);
             _lastCaptureMessage = _keyViewer?.CaptureMessage ?? string.Empty;
-        }, "선택 키 재지정", "keyviewer.capture");
+        }, L.T("keyviewer.rebind"), "keyviewer.capture");
         Track(captureButton);
         labelInput = O5Factory.Input(mappingCard, null,
             _selectedBindingChoice == null ? string.Empty : _keyViewer?.GetCustomSlotLabel(_selectedBindingChoice.Index, _selectedBindingChoice.IsFoot, _editingGhostBindings) ?? string.Empty,
@@ -1902,7 +1906,7 @@ internal sealed class ArgonHost : MonoBehaviour
                     _keyViewer?.SetSlotLabel(_selectedBindingChoice.Index, _selectedBindingChoice.IsFoot, _editingGhostBindings, value);
                     keyDropdown?.Set(_selectedBindingChoice, false);
                 }
-            }, "선택 슬롯 표시 이름", null, "keyviewer.binding-label");
+            }, L.T("keyviewer.slot-label"), null, "keyviewer.binding-label");
         Track(labelInput);
         _keyBindingLabelInput = labelInput;
         var captureText = O5Factory.Row(mappingCard, 38f);
@@ -1914,12 +1918,12 @@ internal sealed class ArgonHost : MonoBehaviour
             _keyViewer?.SetSlotLabel(_selectedBindingChoice.Index, _selectedBindingChoice.IsFoot, _editingGhostBindings, string.Empty);
             labelInput?.Set(string.Empty, false);
             keyDropdown?.Set(_selectedBindingChoice, false);
-        }, "표시 이름 초기화", "keyviewer.reset-label");
+        }, L.T("keyviewer.reset-label"), "keyviewer.reset-label");
         Track(resetLabel);
-        var resetCounts = O5Factory.Button(mappingCard, () => _keyViewer?.ResetCounts(), "입력 기록 초기화", "keyviewer.reset-counts");
+        var resetCounts = O5Factory.Button(mappingCard, () => _keyViewer?.ResetCounts(), L.T("keyviewer.reset-counts"), "keyviewer.reset-counts");
         Track(resetCounts);
 
-        CreateSettingsCard(page, "입력 호환성", "키뷰어는 게임 입력을 읽기만 하며, 게임의 허용 키와 입력 훅을 변경하지 않습니다.");
+        CreateSettingsCard(page, L.T("keyviewer.compat.title"), L.T("keyviewer.compat.subtitle"));
     }
 
     private void BuildKeyPreviewLane(Transform parent, bool foot, int count, string title)
@@ -1985,7 +1989,7 @@ internal sealed class ArgonHost : MonoBehaviour
 
     private void BuildLayoutPage(RectTransform page)
     {
-        var profileCard = CreateSettingsCard(page, "레이아웃 프로필", "프로필은 HUD 요소의 앵커·위치·크기·순서를 포함해 저장됩니다.");
+        var profileCard = CreateSettingsCard(page, L.T("layout.profiles.title"), L.T("layout.profiles.subtitle"));
         if (_hudRuntime == null || _store == null) return;
 
         var profiles = _hudRuntime.LayoutProfiles.ToArray();
@@ -2008,30 +2012,30 @@ internal sealed class ArgonHost : MonoBehaviour
             Track(dropdown);
         }
 
-        var nameInput = O5Factory.Input(profileCard, null, string.Empty, null, "레이아웃 이름", null, "layout.name");
+        var nameInput = O5Factory.Input(profileCard, null, string.Empty, null, L.T("layout.name"), null, "layout.name");
         Track(nameInput);
         Track(O5Factory.Button(profileCard, () =>
         {
             _hudRuntime.CreateLayout(nameInput.Value);
             BuildWindowContent();
-        }, "현재 레이아웃 복제", "layout.create"));
+        }, L.T("layout.duplicate"), "layout.create"));
         Track(O5Factory.Button(profileCard, () =>
         {
             _hudRuntime.RenameLayout(_hudRuntime.ActiveLayoutId, nameInput.Value);
             BuildWindowContent();
-        }, "현재 레이아웃 이름 변경", "layout.rename"));
+        }, L.T("layout.rename"), "layout.rename"));
         Track(O5Factory.Button(profileCard, () =>
         {
             _hudRuntime.DeleteLayout(_hudRuntime.ActiveLayoutId);
             BuildWindowContent();
-        }, "현재 레이아웃 삭제", "layout.delete"));
+        }, L.T("layout.delete"), "layout.delete"));
 
-        var elementCard = CreateSettingsCard(page, "HUD 요소 배치", "9방향 앵커와 좌표, 크기, 배율, 불투명도, 쌓임 순서를 조정합니다.");
+        var elementCard = CreateSettingsCard(page, L.T("layout.elements.title"), L.T("layout.elements.subtitle"));
         var elements = _hudRuntime.ActiveElements.OrderBy(element => element.Order).ToArray();
         var availableDefinitions = _hudRuntime.AvailableDefinitions;
         if (availableDefinitions.Count > 0)
         {
-            AddSection(elementCard, "요소 추가", "기본 HUD 또는 외부 모드 요소를 현재 레이아웃에 추가합니다.");
+            AddSection(elementCard, L.T("layout.add.title"), L.T("layout.add.subtitle"));
             var selectedAvailableId = availableDefinitions[0].Id;
             var availableIds = availableDefinitions.Select(definition => definition.Id).ToArray();
             var availableDropdownRow = O5Factory.Row(elementCard, 50f);
@@ -2051,12 +2055,12 @@ internal sealed class ArgonHost : MonoBehaviour
                     _selectedElementId = instanceId;
                     BuildWindowContent();
                 }
-            }, "선택 요소 추가", "layout.add-element-button"));
+            }, L.T("layout.add"), "layout.add-element-button"));
         }
 
         if (elements.Length == 0)
         {
-            AddSection(elementCard, "요소 없음", "HUD 모듈을 활성화하거나 외부 모드 요소를 추가하세요.");
+            AddSection(elementCard, L.T("layout.empty.title"), L.T("layout.empty.body"));
             return;
         }
 
@@ -2103,63 +2107,81 @@ internal sealed class ArgonHost : MonoBehaviour
             "layout.anchor");
         Track(anchorDropdown);
 
-        AddElementSlider(elementCard, selectedElement, "가로 위치", -1600f, 1600f, selectedElement.X, value => new Vector2(value, selectedElement.Y), "layout.x");
-        AddElementSlider(elementCard, selectedElement, "세로 위치", -1000f, 1000f, selectedElement.Y, value => new Vector2(selectedElement.X, value), "layout.y");
-        AddElementSlider(elementCard, selectedElement, "너비", 32f, 1600f, selectedElement.Width, value => new Vector2(value, selectedElement.Height), "layout.width", true);
-        AddElementSlider(elementCard, selectedElement, "높이", 24f, 1000f, selectedElement.Height, value => new Vector2(selectedElement.Width, value), "layout.height", true);
-        AddSlider(elementCard, "요소 배율", 1f, 0.1f, 4f, selectedElement.Scale,
+        AddElementSlider(elementCard, selectedElement, L.T("layout.x"), -1600f, 1600f, selectedElement.X, value => new Vector2(value, selectedElement.Y), "layout.x");
+        AddElementSlider(elementCard, selectedElement, L.T("layout.y"), -1000f, 1000f, selectedElement.Y, value => new Vector2(selectedElement.X, value), "layout.y");
+        AddElementSlider(elementCard, selectedElement, L.T("common.width"), 32f, 1600f, selectedElement.Width, value => new Vector2(value, selectedElement.Height), "layout.width", true);
+        AddElementSlider(elementCard, selectedElement, L.T("common.height"), 24f, 1000f, selectedElement.Height, value => new Vector2(selectedElement.Width, value), "layout.height", true);
+        AddSlider(elementCard, L.T("layout.scale"), 1f, 0.1f, 4f, selectedElement.Scale,
             value => _hudRuntime.SetStyle(selectedId, value, selectedElement.Opacity, false), "layout.scale", "F2",
             value => _hudRuntime.SetStyle(selectedId, value, selectedElement.Opacity));
-        AddSlider(elementCard, "요소 불투명도", 1f, 0f, 1f, selectedElement.Opacity,
+        AddSlider(elementCard, L.T("layout.opacity"), 1f, 0f, 1f, selectedElement.Opacity,
             value => _hudRuntime.SetStyle(selectedId, selectedElement.Scale, value, false), "layout.opacity", "F2",
             value => _hudRuntime.SetStyle(selectedId, selectedElement.Scale, value));
-        Track(O5Factory.Button(elementCard, () => _hudRuntime.SetOrder(selectedId, selectedElement.Order + 1), "앞으로 이동", "layout.order-up"));
-        Track(O5Factory.Button(elementCard, () => _hudRuntime.SetOrder(selectedId, selectedElement.Order - 1), "뒤로 이동", "layout.order-down"));
+        Track(O5Factory.Button(elementCard, () => _hudRuntime.SetOrder(selectedId, selectedElement.Order + 1), L.T("layout.order-up"), "layout.order-up"));
+        Track(O5Factory.Button(elementCard, () => _hudRuntime.SetOrder(selectedId, selectedElement.Order - 1), L.T("layout.order-down"), "layout.order-down"));
         Track(O5Factory.Button(elementCard, () =>
         {
             _hudRuntime.Remove(selectedId);
             _selectedElementId = null;
             BuildWindowContent();
-        }, "선택 요소 제거", "layout.remove"));
+        }, L.T("layout.remove"), "layout.remove"));
     }
 
     private void BuildAppearancePage(RectTransform page)
     {
-        var featureCard = CreateSettingsCard(page, "외형 기능", "게임 리소스 변경은 HUD와 분리되며, 기능을 끄면 저장된 원본으로 되돌립니다.");
+        var featureCard = CreateSettingsCard(page, L.T("appearance.features.title"), L.T("appearance.features.subtitle"));
         var appearance = _store!.Document.Preferences.Appearance;
-        AddPreferenceToggle(featureCard, "플레이어 공 색상 변경", appearance.ChangePlanetColor, value => { appearance.ChangePlanetColor = value; AppearanceCustomizer.Apply(appearance); }, "appearance.planet-enabled");
-        AddPreferenceToggle(featureCard, "타일 색상 변경", appearance.ChangeTileColor, value => { appearance.ChangeTileColor = value; AppearanceCustomizer.Apply(appearance); }, "appearance.tile-enabled");
-        AddPreferenceToggle(featureCard, "AUTO 아이콘 리소스 변경", appearance.ChangeAutoIcon, value => { appearance.ChangeAutoIcon = value; AppearanceCustomizer.Apply(appearance); }, "appearance.auto-enabled");
-        AddPreferenceToggle(featureCard, "게임 내 레벨 제목 텍스트 변경", appearance.ChangeLogoText, value => { appearance.ChangeLogoText = value; AppearanceCustomizer.Apply(appearance); }, "appearance.logo-enabled");
+        AddPreferenceToggle(featureCard, L.T("appearance.planet-enabled"), appearance.ChangePlanetColor, value => { appearance.ChangePlanetColor = value; AppearanceCustomizer.Apply(appearance); }, "appearance.planet-enabled");
+        AddPreferenceToggle(featureCard, L.T("appearance.tile-enabled"), appearance.ChangeTileColor, value => { appearance.ChangeTileColor = value; AppearanceCustomizer.Apply(appearance); }, "appearance.tile-enabled");
+        AddPreferenceToggle(featureCard, L.T("appearance.auto-enabled"), appearance.ChangeAutoIcon, value => { appearance.ChangeAutoIcon = value; AppearanceCustomizer.Apply(appearance); }, "appearance.auto-enabled");
+        AddPreferenceToggle(featureCard, L.T("appearance.logo-enabled"), appearance.ChangeLogoText, value => { appearance.ChangeLogoText = value; AppearanceCustomizer.Apply(appearance); }, "appearance.logo-enabled");
 
-        var colorCard = CreateSettingsCard(page, "외형 색상", "공·타일·레벨 제목에 적용할 색상을 선택합니다.");
-        AddColorPicker(colorCard, "공 색상", appearance.PlanetColor, value => { appearance.PlanetColor = ColorUtility.ToHtmlStringRGBA(value); AppearanceCustomizer.Apply(appearance); }, "appearance.planet-color");
-        AddColorPicker(colorCard, "타일 색상", appearance.TileColor, value => { appearance.TileColor = ColorUtility.ToHtmlStringRGBA(value); AppearanceCustomizer.Apply(appearance); }, "appearance.tile-color");
-        AddColorPicker(colorCard, "제목 색상", appearance.LogoColor, value => { appearance.LogoColor = ColorUtility.ToHtmlStringRGBA(value); AppearanceCustomizer.Apply(appearance); }, "appearance.logo-color");
+        var colorCard = CreateSettingsCard(page, L.T("appearance.colors.title"), L.T("appearance.colors.subtitle"));
+        AddColorPicker(colorCard, L.T("appearance.planet-color"), appearance.PlanetColor, value => { appearance.PlanetColor = ColorUtility.ToHtmlStringRGBA(value); AppearanceCustomizer.Apply(appearance); }, "appearance.planet-color");
+        AddColorPicker(colorCard, L.T("appearance.tile-color"), appearance.TileColor, value => { appearance.TileColor = ColorUtility.ToHtmlStringRGBA(value); AppearanceCustomizer.Apply(appearance); }, "appearance.tile-color");
+        AddColorPicker(colorCard, L.T("appearance.logo-color"), appearance.LogoColor, value => { appearance.LogoColor = ColorUtility.ToHtmlStringRGBA(value); AppearanceCustomizer.Apply(appearance); }, "appearance.logo-color");
 
-        var resourcesCard = CreateSettingsCard(page, "텍스트 및 리소스", "선택 사항입니다. 비워 두면 원래 게임 리소스와 제목을 사용합니다.");
-        var logoInput = O5Factory.Input(resourcesCard, null, appearance.LogoTitle, value => { appearance.LogoTitle = value; _store.Save(); AppearanceCustomizer.Apply(appearance); }, "표시 제목", null, "appearance.logo-title");
+        var resourcesCard = CreateSettingsCard(page, L.T("appearance.resources.title"), L.T("appearance.resources.subtitle"));
+        var logoInput = O5Factory.Input(resourcesCard, null, appearance.LogoTitle, value => { appearance.LogoTitle = value; _store.Save(); AppearanceCustomizer.Apply(appearance); }, L.T("appearance.logo-title"), null, "appearance.logo-title");
         Track(logoInput);
-        var iconInput = O5Factory.Input(resourcesCard, null, appearance.AutoIconResourcePath, value => { appearance.AutoIconResourcePath = value; _store.Save(); AppearanceCustomizer.Apply(appearance); }, "선택적 리소스 경로", null, "appearance.auto-path");
+        var iconInput = O5Factory.Input(resourcesCard, null, appearance.AutoIconResourcePath, value => { appearance.AutoIconResourcePath = value; _store.Save(); AppearanceCustomizer.Apply(appearance); }, L.T("appearance.auto-path"), null, "appearance.auto-path");
         Track(iconInput);
-        Track(O5Factory.Button(resourcesCard, () => AppearanceCustomizer.RestoreOriginals(), "외형 원본 복구", "appearance.restore"));
+        Track(O5Factory.Button(resourcesCard, () => AppearanceCustomizer.RestoreOriginals(), L.T("appearance.restore"), "appearance.restore"));
     }
+
+    // Rebuild on the next frame: the change usually comes from a dropdown that the rebuild destroys.
+    private bool _languageRebuildPending;
+
+    private void OnLanguageChanged() => _languageRebuildPending = true;
 
     private void BuildGeneralPage(RectTransform page)
     {
-        var displayCard = CreateSettingsCard(page, "HUD 전체 표시", "크기와 불투명도는 모든 HUD 요소에 적용합니다.");
+        var languageCard = CreateSettingsCard(page, L.T("general.language"), string.Empty);
+        var languageCodes = new List<string> { L.Auto };
+        languageCodes.AddRange(L.Available);
+        var currentLanguage = languageCodes.FindIndex(code =>
+            string.Equals(code, _store!.Document.Preferences.Language, StringComparison.OrdinalIgnoreCase));
+        AddDropdown(languageCard, 0, Math.Max(0, currentLanguage), Enumerable.Range(0, languageCodes.Count).ToArray(),
+            index => index == 0 ? L.T("general.language.auto") : L.NativeName(languageCodes[index]),
+            index =>
+            {
+                _store!.Document.Preferences.Language = languageCodes[index];
+                _store.Save();
+                L.SetLanguage(languageCodes[index]);
+            }, "general.language");
+        var displayCard = CreateSettingsCard(page, L.T("general.display.title"), L.T("general.display.subtitle"));
         var preferences = _store!.Document.Preferences;
-        AddSlider(displayCard, "전체 HUD 배율", 1f, 0.25f, 3f, preferences.HudScale,
+        AddSlider(displayCard, L.T("general.hud-scale"), 1f, 0.25f, 3f, preferences.HudScale,
             value => _hudRuntime?.SetGlobalStyle(value, preferences.HudOpacity, false), "general.hud-scale", "F2",
             value => _hudRuntime?.SetGlobalStyle(value, preferences.HudOpacity, false));
-        AddSlider(displayCard, "전체 HUD 불투명도", 1f, 0f, 1f, preferences.HudOpacity,
+        AddSlider(displayCard, L.T("general.hud-opacity"), 1f, 0f, 1f, preferences.HudOpacity,
             value => _hudRuntime?.SetGlobalStyle(preferences.HudScale, value, false), "general.hud-opacity", "F2",
             value => _hudRuntime?.SetGlobalStyle(preferences.HudScale, value, false));
-        AddSlider(displayCard, "HUD 글자 크기", 28f, 12f, 96f, preferences.Hud.FontSize,
+        AddSlider(displayCard, L.T("general.font-size"), 28f, 12f, 96f, preferences.Hud.FontSize,
             value => preferences.Hud.FontSize = value, "general.font-size", "F0");
-        var helpCard = CreateSettingsCard(page, "도움말 및 저장", "설정 창은 Ctrl + Shift + O, HUD 배치 편집은 Esc 키로 닫을 수 있습니다.");
-        AddSection(helpCard, "설정 파일", System.IO.Path.Combine(Application.persistentDataPath, "Argon", "config.json"));
-        Track(O5Factory.Button(helpCard, () => { _store.Save(); _store.Flush(); }, "설정 지금 저장", "general.save"));
+        var helpCard = CreateSettingsCard(page, L.T("general.help.title"), L.T("general.help.subtitle"));
+        AddSection(helpCard, L.T("general.config-file"), System.IO.Path.Combine(Application.persistentDataPath, "Argon", "config.json"));
+        Track(O5Factory.Button(helpCard, () => { _store.Save(); _store.Flush(); }, L.T("general.save"), "general.save"));
     }
 
     private RectTransform CreateEditorPage(string id)
@@ -2402,8 +2424,8 @@ internal sealed class ArgonHost : MonoBehaviour
 
     private string FormatBindingChoice(KeyBindingChoice choice)
     {
-        var name = _keyViewer?.GetSlotLabel(choice.Index, choice.IsFoot, _editingGhostBindings) ?? "없음";
-        return (choice.IsFoot ? "발" : "손") + " " + (choice.Index + 1) + " · " + name;
+        var name = _keyViewer?.GetSlotLabel(choice.Index, choice.IsFoot, _editingGhostBindings) ?? L.T("common.none");
+        return L.F("keyviewer.slot-name", L.T(choice.IsFoot ? "keyviewer.foot" : "keyviewer.hand"), choice.Index + 1, name);
     }
 
     private void ShowPage(string id)
@@ -2438,12 +2460,12 @@ internal sealed class ArgonHost : MonoBehaviour
         {
             (_pageTitle.text, _pageSubtitle.text) = id switch
             {
-                "overview" => ("개요", "활성 모듈과 키 레이아웃, 저장된 작업 공간을 확인합니다."),
-                "hud" => ("HUD", "모듈, 표시 정보, 판정 및 색상을 한 곳에서 관리합니다."),
-                "keyviewer" => ("키 뷰어", "미리보기, 배치, 효과 및 키 매핑을 한 곳에서 관리합니다."),
-                "layout" => ("레이아웃 스튜디오", "HUD 요소를 배치하고 재사용할 프로필을 관리합니다."),
-                "appearance" => ("게임 외형", "HUD와 분리된 게임 리소스의 색상과 표시를 조정합니다."),
-                _ => ("환경 설정", "Argon의 전역 표시 옵션과 로컬 저장을 관리합니다."),
+                "overview" => (L.T("nav.overview"), L.T("page.overview.subtitle")),
+                "hud" => ("HUD", L.T("page.hud.subtitle")),
+                "keyviewer" => (L.T("nav.keyviewer"), L.T("page.keyviewer.subtitle")),
+                "layout" => (L.T("page.layout.title"), L.T("page.layout.subtitle")),
+                "appearance" => (L.T("nav.appearance"), L.T("page.appearance.subtitle")),
+                _ => (L.T("nav.general"), L.T("page.general.subtitle")),
             };
         }
         SettleEditorLayout();
@@ -2521,6 +2543,12 @@ internal sealed class ArgonHost : MonoBehaviour
 
     private void Update()
     {
+        if (_languageRebuildPending)
+        {
+            _languageRebuildPending = false;
+            BuildWindowContent();
+        }
+
         UpdateEditorShortcuts();
         _hudRuntime?.Tick(Time.unscaledDeltaTime);
         _keyViewer?.UpdateRuntime();
@@ -2557,7 +2585,7 @@ internal sealed class ArgonHost : MonoBehaviour
         {
             _captureStatus.text = _keyViewer.CaptureMessage;
             var message = _keyViewer.CaptureMessage;
-            if (!string.IsNullOrEmpty(message) && message != _lastCaptureMessage && !message.Contains("기다리는 중"))
+            if (!string.IsNullOrEmpty(message) && message != _lastCaptureMessage && !_keyViewer.IsCapturing)
             {
                 _lastCaptureMessage = message;
                 if (_selectedBindingChoice != null)
@@ -2630,6 +2658,7 @@ internal sealed class ArgonHost : MonoBehaviour
             _editingHud = false;
         }
 
+        L.Changed -= OnLanguageChanged;
         O5ShortcutManager.Unregister(ToggleWindowShortcutId);
         if (_window != null) _window.CloseRequested -= OnCloseRequested;
         DisposeControls();
@@ -2743,15 +2772,15 @@ internal sealed class ArgonHost : MonoBehaviour
     {
         return anchor switch
         {
-            HudAnchor.TopLeft => "좌상단",
-            HudAnchor.TopCenter => "상단 중앙",
-            HudAnchor.TopRight => "우상단",
-            HudAnchor.MiddleLeft => "좌측 중앙",
-            HudAnchor.Center => "화면 중앙",
-            HudAnchor.MiddleRight => "우측 중앙",
-            HudAnchor.BottomLeft => "좌하단",
-            HudAnchor.BottomCenter => "하단 중앙",
-            HudAnchor.BottomRight => "우하단",
+            HudAnchor.TopLeft => L.T("anchor.top-left"),
+            HudAnchor.TopCenter => L.T("anchor.top-center"),
+            HudAnchor.TopRight => L.T("anchor.top-right"),
+            HudAnchor.MiddleLeft => L.T("anchor.middle-left"),
+            HudAnchor.Center => L.T("anchor.center"),
+            HudAnchor.MiddleRight => L.T("anchor.middle-right"),
+            HudAnchor.BottomLeft => L.T("anchor.bottom-left"),
+            HudAnchor.BottomCenter => L.T("anchor.bottom-center"),
+            HudAnchor.BottomRight => L.T("anchor.bottom-right"),
             _ => anchor.ToString(),
         };
     }

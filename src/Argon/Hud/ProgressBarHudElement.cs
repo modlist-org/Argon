@@ -9,7 +9,7 @@ internal static class ProgressBarHudElement
     {
         return new HudElementDefinition(
             "argon.builtin.progress-bar",
-            "진행 바",
+            "Progress bar",
             false,
             HudAnchor.TopCenter,
             new Vector2(0f, -18f),
