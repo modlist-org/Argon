@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using Argon.Compat;
 using Argon.Storage;
 using HarmonyLib;
 using UnityEngine;
@@ -34,13 +35,14 @@ internal sealed class GameEventBridge : IDisposable
         _activePreferences = preferences;
         _harmonyId = "argon.game-events." + (++_instanceCounter);
         _harmony = new Harmony(_harmonyId);
-        Patch(typeof(scrMarginTracker), "AddHit", nameof(OnHit), prefix: false, typeof(HitMargin));
+        // Targets resolve by name on scrMarginTracker (current) or scrMistakesManager (legacy).
+        Patch(GameApi.AddHitTarget, "AddHit", nameof(OnHit), prefix: false);
         // Failed floors bypass AddHit (AddHits(FailedFloor, n)); they still break the combo.
-        Patch(typeof(scrMarginTracker), "AddHits", nameof(OnHits), prefix: false, typeof(HitMargin), typeof(int));
-        Patch(typeof(scrMarginTracker), "RevertToLastCheckpoint", nameof(OnRevert), prefix: false);
-        Patch(typeof(scrPlanet), "SwitchChosen", nameof(OnSwitchChosen), prefix: true);
-        Patch(typeof(scnGame), "Play", nameof(OnRunBoundary), prefix: false);
-        Patch(typeof(scrController), "StartLoadingScene", nameof(OnRunBoundary), prefix: false);
+        Patch(GameApi.AddHitsTarget, "AddHits", nameof(OnHits), prefix: false);
+        Patch(GameApi.RevertTarget, "RevertToLastCheckpoint", nameof(OnRevert), prefix: false);
+        Patch(GameApi.SwitchChosenTarget, "SwitchChosen", nameof(OnSwitchChosen), prefix: true);
+        Patch(GameApi.PlayTarget, "Play", nameof(OnRunBoundary), prefix: false);
+        Patch(GameApi.StartLoadingSceneTarget, "StartLoadingScene", nameof(OnRunBoundary), prefix: false);
     }
 
     public void Dispose()
@@ -65,17 +67,14 @@ internal sealed class GameEventBridge : IDisposable
         ComboTier = 0;
     }
 
-    private void Patch(Type type, string originalName, string patchName, bool prefix, params Type[] argumentTypes)
+    private void Patch(MethodBase? original, string originalName, string patchName, bool prefix)
     {
         try
         {
-            var original = argumentTypes.Length > 0
-                ? AccessTools.Method(type, originalName, argumentTypes)
-                : AccessTools.Method(type, originalName);
             var patch = typeof(GameEventBridge).GetMethod(patchName, BindingFlags.NonPublic | BindingFlags.Static);
             if (original == null || patch == null)
             {
-                Debug.LogWarning($"[Argon] Optional game event patch '{type.Name}.{originalName}' is unavailable.");
+                Debug.LogWarning($"[Argon] Optional game event patch '{originalName}' is unavailable on this game version.");
                 return;
             }
 
@@ -85,21 +84,20 @@ internal sealed class GameEventBridge : IDisposable
         }
         catch (Exception exception)
         {
-            Debug.LogWarning($"[Argon] Could not patch '{type.Name}.{originalName}': {exception.Message}");
+            Debug.LogWarning($"[Argon] Could not patch '{originalName}': {exception.Message}");
         }
     }
 
-    private static bool IsPlayerOne(scrMarginTracker tracker)
+    private static bool IsPlayerOne(object tracker)
     {
-        var controller = scrController.instance;
-        var player = controller != null ? controller.playerOne : null;
-        // Unknown ownership (older builds): accept rather than drop every hit.
-        return player == null || player.marginTracker == null || ReferenceEquals(player.marginTracker, tracker);
+        // Unknown ownership: accept rather than drop every hit.
+        var playerOne = GameApi.Tracker(scrController.instance);
+        return playerOne == null || ReferenceEquals(playerOne, tracker);
     }
 
     private static void OnRunBoundary() => ResetSession();
 
-    private static void OnRevert(scrMarginTracker __instance)
+    private static void OnRevert(object __instance)
     {
         if (!IsPlayerOne(__instance)) return;
         Combo = 0;
@@ -108,7 +106,7 @@ internal sealed class GameEventBridge : IDisposable
         _pendingTimingValid = false;
     }
 
-    private static void OnHits(scrMarginTracker __instance, HitMargin __0, int __1)
+    private static void OnHits(object __instance, HitMargin __0, int __1)
     {
         if (__1 > 0) OnHit(__instance, __0);
     }
@@ -120,13 +118,13 @@ internal sealed class GameEventBridge : IDisposable
         try
         {
             var controller = scrController.instance;
-            if (controller == null || !controller.gameworld || RDC.auto) return;
-            var system = __instance.planetarySystem;
-            var conductor = __instance.conductor;
-            if (system == null || conductor == null || conductor.song == null) return;
-            var rate = Math.PI * conductor.bpm * system.speed * conductor.song.pitch;
+            if (controller == null || !GameApi.IsGameworld(controller) || RDC.auto) return;
+            var system = GameApi.Planetary(__instance);
+            var conductor = scrConductor.instance;
+            if (conductor == null || conductor.song == null) return;
+            var rate = Math.PI * conductor.bpm * GameApi.SystemSpeed(system, controller) * conductor.song.pitch;
             if (Math.Abs(rate) < 1e-9) return;
-            _pendingTimingMs = (__instance.cachedAngle - __instance.targetExitAngle) * (system.isCW ? 1 : -1) * 60000.0 / rate;
+            _pendingTimingMs = (__instance.cachedAngle - __instance.targetExitAngle) * (GameApi.IsClockwise(system) ? 1 : -1) * 60000.0 / rate;
             _pendingTimingValid = !double.IsNaN(_pendingTimingMs) && !double.IsInfinity(_pendingTimingMs);
         }
         catch
@@ -135,7 +133,7 @@ internal sealed class GameEventBridge : IDisposable
         }
     }
 
-    private static void OnHit(scrMarginTracker __instance, HitMargin __0)
+    private static void OnHit(object __instance, HitMargin __0)
     {
         if (!IsPlayerOne(__instance)) return;
         var margin = __0;

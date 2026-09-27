@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Argon.Api;
 using Argon.Appearance;
+using Argon.Compat;
 using Argon.Hud;
 using Argon.Integration;
 using Argon.KeyViewer;
@@ -122,6 +123,7 @@ internal sealed class ArgonHost : MonoBehaviour
         O5Boot.EnsureDefaults(new O5Config { UIScale = 1f });
         O5Boot.SetTheme(_argonTheme);
         _store = ArgonStore.Load();
+        GameApi.LogDetectedVersion();
         _hudRuntime = HudRuntime.Create(transform, _store);
         _keyViewer = new KeyViewerRuntime(_hudRuntime.CanvasTransform, _store);
         _appearanceCustomizer = new AppearanceCustomizer(_store);

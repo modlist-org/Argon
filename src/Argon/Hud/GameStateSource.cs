@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Argon.Compat;
 using Argon.Integration;
 using Argon.Storage;
 using UnityEngine;
@@ -127,15 +128,14 @@ internal static class GameStateSource
 
             var floors = levelMaker.listFloors!;
             var totalTiles = floors.Count;
-            var totalScorable = levelMaker.PlayerHitFloors != null ? levelMaker.PlayerHitFloors.Count : Math.Max(0, totalTiles - 1);
-            var sequence = Math.Max(0, controller.currentSeqID);
-            var currentFloor = controller.currFloor ?? controller.firstFloor;
-            var player = controller.playerOne;
-            var tracker = player != null ? player.marginTracker : null;
-            var manager = controller.mistakesManager;
+            var totalScorable = GameApi.PlayerHitFloorCount(levelMaker, Math.Max(0, totalTiles - 1));
+            var sequence = Math.Max(0, GameApi.CurrentSeqId(controller));
+            var currentFloor = GameApi.CurrentFloor(controller);
+            var tracker = GameApi.Tracker(controller);
+            var manager = GameApi.MistakesManager(controller);
             var song = conductor.song;
             var songPitch = song != null ? Math.Max(0.01f, song.pitch) : 1f;
-            var planetSpeed = player != null && player.planetarySystem != null ? (float)player.planetarySystem.speed : 1f;
+            var planetSpeed = (float)GameApi.PlanetSpeed(controller);
             var baseBpm = conductor.bpm * songPitch * planetSpeed;
             var currentBpm = baseBpm;
             if (currentFloor != null && currentFloor.nextfloor != null)
@@ -159,17 +159,18 @@ internal static class GameStateSource
                 pseudoCount = 1;
             }
 
-            var state = controller.state;
-            var stateName = StateName(state);
-            var levelName = string.IsNullOrWhiteSpace(controller.levelName)
-                ? (scrController.currentWorldString ?? "Unknown level")
-                : controller.levelName;
+            var stateName = GameApi.StateName(controller);
+            var controllerLevelName = GameApi.LevelName(controller);
+            var worldName = GameApi.WorldString;
+            var levelName = !string.IsNullOrWhiteSpace(controllerLevelName) ? controllerLevelName
+                : !string.IsNullOrWhiteSpace(worldName) ? worldName
+                : "Unknown level";
             var levelData = scnGame.instance != null ? scnGame.instance.levelData : null;
             var levelAuthor = levelData != null ? levelData.author : string.Empty;
             var recordKey = GetLevelKey(floors, levelName, totalTiles, levelData);
             EnsureCheckpointCache(floors, recordKey);
-            var isActiveState = state == States.Start || state == States.Countdown || state == States.PlayerControl;
-            var isEndState = state == States.Fail || state == States.Fail2 || state == States.Won;
+            var isActiveState = stateName == "Start" || stateName == "Countdown" || stateName == "PlayerControl";
+            var isEndState = stateName == "Fail" || stateName == "Fail2" || stateName == "Won";
             if (isActiveState && (!_sessionActive || _sessionKey != recordKey))
             {
                 store.RecordAttempt(recordKey);
@@ -185,17 +186,18 @@ internal static class GameStateSource
                 _sessionKey = string.Empty;
             }
 
-            var progress = Mathf.Clamp01(controller.percentComplete);
+            var progress = Mathf.Clamp01(GameApi.PercentComplete(controller));
             var record = store.RecordProgress(recordKey, progress);
-            var accuracy = manager != null ? manager.percentAcc : 0f;
-            var xAccuracy = manager != null ? manager.percentXAcc : 0f;
-            var potentialXAccuracy = manager != null ? Mathf.Max(xAccuracy, manager.maxPossibleXAcc) : xAccuracy;
-            var hits = tracker != null ? tracker.playerHitMarginCount : sequence;
+            var accuracy = GameApi.PercentAcc(manager);
+            var xAccuracy = GameApi.PercentXAcc(manager);
+            var potentialXAccuracy = Mathf.Max(xAccuracy, GameApi.MaxPossibleXAcc(tracker, manager, xAccuracy));
+            var hits = GameApi.PlayerHitCount(tracker, sequence);
             var remaining = Math.Max(0, totalScorable - hits);
-            var potentialAccuracy = GetPotentialAccuracy(tracker, accuracy, hits, totalScorable);
-            var xScore = tracker != null ? tracker.xScore : 0;
-            var maxXScore = tracker != null ? tracker.maxXScore : 0;
-            var perPerfectScore = GetPerfectXScore();
+            var potentialAccuracy = GetPotentialAccuracy(GameApi.HitMarginCounts(tracker), accuracy, hits, totalScorable);
+            var xScore = GameApi.XScore(tracker);
+            var maxXScore = GameApi.MaxXScore(tracker);
+            // Max X-score is (player-hit floors × per-tile X-perfect score); derive the per-tile value from it.
+            var perPerfectScore = totalScorable > 0 && maxXScore > 0 ? maxXScore / totalScorable : 0;
             var potentialXScore = Math.Min(maxXScore, xScore + remaining * perPerfectScore);
 
             var checkpoints = CountReachedCheckpoints(sequence);
@@ -210,7 +212,8 @@ internal static class GameStateSource
 
             snapshot.InGame = true;
             snapshot.IsAuto = RDC.auto;
-            snapshot.IsDead = state == States.Fail || state == States.Fail2 || (tracker != null && tracker.GetDeaths() > 0);
+            var deaths = GameApi.GetDeaths(tracker);
+            snapshot.IsDead = stateName == "Fail" || stateName == "Fail2" || deaths > 0;
             snapshot.LevelName = levelName;
             snapshot.LevelAuthor = levelAuthor ?? string.Empty;
             snapshot.State = stateName;
@@ -218,11 +221,11 @@ internal static class GameStateSource
             snapshot.HasJudgement = !string.IsNullOrEmpty(snapshot.Judgement);
             snapshot.Sequence = sequence;
             snapshot.TotalTiles = totalTiles;
-            snapshot.CheckpointsUsed = scrController.checkpointsUsed;
+            snapshot.CheckpointsUsed = GameApi.CheckpointsUsed;
             snapshot.CheckpointCount = checkpoints;
             snapshot.Attempts = record.Attempts;
-            snapshot.Deaths = tracker != null ? tracker.GetDeaths() : 0;
-            snapshot.StartSequence = controller.startedFromCheckpoint ? Math.Max(0, GCS.checkpointNum) : 0;
+            snapshot.Deaths = deaths;
+            snapshot.StartSequence = GameApi.StartedFromCheckpoint(controller) ? Math.Max(0, GameApi.CheckpointStart) : 0;
             snapshot.Combo = GameEventBridge.Combo;
             snapshot.PurePerfectCombo = GameEventBridge.PurePerfectCombo;
             snapshot.ComboTier = GameEventBridge.ComboTier;
@@ -247,9 +250,7 @@ internal static class GameStateSource
             snapshot.MusicDuration = musicDuration;
             snapshot.MapSeconds = Mathf.Clamp(mapSeconds, 0f, Math.Max(0f, mapDuration));
             snapshot.MapDuration = mapDuration;
-            snapshot.PlanetAngle = player != null && player.planetarySystem != null && player.planetarySystem.chosenPlanet != null
-                ? (float)player.planetarySystem.chosenPlanet.angle
-                : 0f;
+            snapshot.PlanetAngle = GameApi.ChosenPlanetAngle(controller);
             snapshot.BestProgress = record.BestProgress;
             snapshot.HasMusic = hasMusic;
         }
@@ -281,14 +282,13 @@ internal static class GameStateSource
 
     // The game computes percentAcc = accurate / counted + perfect * 0.0001; invert it to recover the
     // counted-hit total, then assume every remaining player-hit tile is a perfect.
-    private static float GetPotentialAccuracy(scrMarginTracker? tracker, float accuracy, int hitsSoFar, int totalScorable)
+    private static float GetPotentialAccuracy(int[]? counts, float accuracy, int hitsSoFar, int totalScorable)
     {
-        if (tracker == null || tracker.hitMarginsCount == null)
+        if (counts == null)
         {
             return accuracy;
         }
 
-        var counts = tracker.hitMarginsCount;
         var perfect = HitKinds.Count(counts, HitKind.Perfect);
         var accurate = perfect + HitKinds.Count(counts, HitKind.EarlyPerfect) + HitKinds.Count(counts, HitKind.LatePerfect);
         var remaining = Math.Max(totalScorable - hitsSoFar, 0);
@@ -347,7 +347,7 @@ internal static class GameStateSource
         {
             if (levelData != null && !(string.IsNullOrWhiteSpace(levelData.author) && string.IsNullOrWhiteSpace(levelData.artist) && string.IsNullOrWhiteSpace(levelData.song)))
             {
-                var hash = levelData.Hash;
+                var hash = GameApi.LevelHash(levelData);
                 if (!string.IsNullOrWhiteSpace(hash)) identity = hash.Trim().ToLowerInvariant();
             }
         }
@@ -358,20 +358,6 @@ internal static class GameStateSource
 
         _levelKey = Hash128.Compute(identity + "|" + tileCount).ToString();
         return _levelKey;
-    }
-
-    private static string StateName(States state)
-    {
-        switch (state)
-        {
-            case States.Start: return "Start";
-            case States.Countdown: return "Countdown";
-            case States.PlayerControl: return "PlayerControl";
-            case States.Fail: return "Fail";
-            case States.Fail2: return "Fail2";
-            case States.Won: return "Won";
-            default: return state.ToString();
-        }
     }
 
     private static bool TryGetPseudoBpm(scrFloor? currentFloor, float baseBpm, float pitch, out float bpm, out int count)
@@ -468,18 +454,6 @@ internal static class GameStateSource
     private static bool IsNinetyDegrees(double angle)
     {
         return Math.Abs(angle - 1.5707963267948966d) < 1e-10d;
-    }
-
-    private static int GetPerfectXScore()
-    {
-        try
-        {
-            return HitMargin.XPerfect.ToXScore();
-        }
-        catch
-        {
-            return 2;
-        }
     }
 }
 

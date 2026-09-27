@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Argon.Storage;
+using Argon.Compat;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,7 +12,9 @@ namespace Argon.Appearance;
 /// <summary>Appearance changes are isolated from the HUD registry and preserve source values for restoration.</summary>
 internal sealed class AppearanceCustomizer : IDisposable
 {
-    private const string HarmonyId = "argon.appearance";
+    // Per-instance id: a deferred Dispose of an old instance must not unpatch a newer one.
+    private static int _instanceCounter;
+    private readonly string _harmonyId = "argon.appearance." + (++_instanceCounter);
     private static readonly FieldInfo? DebugTextField = typeof(scrShowIfDebug).GetField("txt", BindingFlags.Instance | BindingFlags.NonPublic);
     private static AppearanceCustomizer? _instance;
     private readonly ArgonStore _store;
@@ -32,7 +35,7 @@ internal sealed class AppearanceCustomizer : IDisposable
     {
         _store = store;
         _instance = this;
-        _harmony = new Harmony(HarmonyId);
+        _harmony = new Harmony(_harmonyId);
         PatchPrefix(typeof(PlanetRenderer), "SetRainbow", nameof(AllowRainbow), typeof(bool));
         PatchPrefix(typeof(PlanetRenderer), "SetPlanetColor", nameof(OverridePlanetColor), typeof(Color));
         PatchPrefix(typeof(PlanetRenderer), "SetCoreColor", nameof(OverridePlanetColor), typeof(Color));
@@ -93,7 +96,7 @@ internal sealed class AppearanceCustomizer : IDisposable
         _restoring = true;
         RestoreCapturedValues();
         _restoring = false;
-        _harmony.UnpatchAll(HarmonyId);
+        _harmony.UnpatchAll(_harmonyId);
         if (ReferenceEquals(_instance, this)) _instance = null;
     }
 
@@ -182,7 +185,7 @@ internal sealed class AppearanceCustomizer : IDisposable
     {
         var instance = _instance;
         if (instance != null && !instance._restoring && instance._store.Document.Preferences.Appearance.ChangePlanetColor &&
-            !scrController.coopMode && __instance is PlanetRenderer renderer && IsActiveSceneObject(renderer.gameObject) &&
+            !GameApi.CoopMode && __instance is PlanetRenderer renderer && IsActiveSceneObject(renderer.gameObject) &&
             renderer.GetComponentInParent<scrPlanet>() != null)
         {
             color = ParseColor(instance._store.Document.Preferences.Appearance.PlanetColor, Color.white);
@@ -193,7 +196,7 @@ internal sealed class AppearanceCustomizer : IDisposable
     {
         var instance = _instance;
         return instance != null && !instance._restoring &&
-               instance._store.Document.Preferences.Appearance.ChangePlanetColor && !scrController.coopMode;
+               instance._store.Document.Preferences.Appearance.ChangePlanetColor && !GameApi.CoopMode;
     }
 
     private static void OnTileChanged(object __instance, object[] __args)
@@ -212,7 +215,7 @@ internal sealed class AppearanceCustomizer : IDisposable
     private void ApplyPlanet(PlanetRenderer? renderer, Color color, bool force = false)
     {
         if (renderer == null || !IsActiveSceneObject(renderer.gameObject) ||
-            renderer.GetComponentInParent<scrPlanet>() == null || scrController.coopMode)
+            renderer.GetComponentInParent<scrPlanet>() == null || GameApi.CoopMode)
         {
             return;
         }

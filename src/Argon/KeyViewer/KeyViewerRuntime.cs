@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using Argon.Compat;
 using Argon.Storage;
 using O5Kit.Core;
 using SkyHook;
@@ -467,7 +468,7 @@ internal sealed class KeyViewerRuntime : IDisposable
 
         if (binding.KeyCode >= ArgonStore.NativeKeyBase)
         {
-            var keyLabel = SkyHookKeyMapper.NativeKeyCodeToKeyLabel((ushort)(binding.KeyCode - ArgonStore.NativeKeyBase));
+            var keyLabel = HookKeyMapper.FromNative((ushort)(binding.KeyCode - ArgonStore.NativeKeyBase));
             return keyLabel != KeyLabel.Unknown
                 ? keyLabel.ToString()
                 : "Key " + (binding.KeyCode - ArgonStore.NativeKeyBase).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -1065,7 +1066,7 @@ internal sealed class KeyViewerRuntime : IDisposable
             return;
         }
 
-        var mapped = SkyHookKeyMapper.SkyHookKeyToUnityKey(input.Label);
+        var mapped = HookKeyMapper.ToUnity(input.Label);
         if (mapped == KeyCode.Escape)
         {
             CancelCapture();
@@ -1087,7 +1088,7 @@ internal sealed class KeyViewerRuntime : IDisposable
     {
         if (binding == null || binding.KeyCode == (int)KeyCode.None) return false;
         if (binding.KeyCode >= ArgonStore.NativeKeyBase) return input.Key == binding.KeyCode - ArgonStore.NativeKeyBase;
-        var label = SkyHookKeyMapper.UnityKeyToSkyHookKey((KeyCode)binding.KeyCode);
+        var label = HookKeyMapper.FromUnity((KeyCode)binding.KeyCode);
         return label != KeyLabel.Unknown && input.Label == label;
     }
 
