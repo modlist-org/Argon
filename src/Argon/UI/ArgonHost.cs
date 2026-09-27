@@ -33,6 +33,7 @@ internal sealed class ArgonHost : MonoBehaviour
     private HudRuntime? _hudRuntime;
     private KeyViewerRuntime? _keyViewer;
     private GameEventBridge? _eventBridge;
+    private FontFallback? _fontFallback;
     private AppearanceCustomizer? _appearanceCustomizer;
     private ArgonStore? _store;
     private readonly List<O5Object> _controls = new List<O5Object>();
@@ -122,6 +123,14 @@ internal sealed class ArgonHost : MonoBehaviour
         };
         O5Boot.EnsureDefaults(new O5Config { UIScale = 1f });
         O5Boot.SetTheme(_argonTheme);
+        try
+        {
+            _fontFallback = new FontFallback(O5Boot.Fonts.Regular, O5Boot.Fonts.Medium, O5Boot.Fonts.Monospace);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"[Argon] Font fallback unavailable: {exception.Message}");
+        }
         _store = ArgonStore.Load();
         GameApi.LogDetectedVersion();
         _hudRuntime = HudRuntime.Create(transform, _store);
@@ -2533,6 +2542,7 @@ internal sealed class ArgonHost : MonoBehaviour
         }
         RefreshKeyPreview();
         _appearanceCustomizer?.Tick();
+        _fontFallback?.Tick();
         _store?.Tick(GameStateSource.Current.InGame && GameStateSource.Current.State == "PlayerControl");
         O5Object.TickAll();
         O5Tooltip.Tick();
@@ -2627,6 +2637,8 @@ internal sealed class ArgonHost : MonoBehaviour
         _windowManager = null;
         _eventBridge?.Dispose();
         _eventBridge = null;
+        _fontFallback?.Dispose();
+        _fontFallback = null;
         _appearanceCustomizer?.Dispose();
         _appearanceCustomizer = null;
         _keyViewer?.Dispose();
