@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
 using Argon.Hud;
@@ -11,8 +13,15 @@ namespace Argon.Storage;
 internal sealed class ArgonStore
 {
     private const int CurrentSchemaVersion = 2;
+    private const float SaveDebounceSeconds = 0.5f;
+    private const float MaxDeferSeconds = 120f;
     private readonly string _path;
+    private readonly object _writeLock = new object();
     private bool _readOnly;
+    private bool _dirty;
+    private float _dueAt;
+    private int _writeSequence;
+    private int _writtenSequence;
 
     internal ArgonDocument Document { get; }
     internal HudLayoutData ActiveLayout
@@ -45,14 +54,20 @@ internal sealed class ArgonStore
     {
         var directory = Path.Combine(Application.persistentDataPath, "Argon");
         var path = Path.Combine(directory, "config.json");
-        ArgonDocument? document = TryRead(path);
+        var mainResult = TryRead(path, out var document);
+        var readOnly = mainResult == ReadResult.Unavailable;
 
         if (document == null)
         {
-            document = TryRead(path + ".bak");
+            if (mainResult == ReadResult.Corrupt) Quarantine(path);
+            var backupResult = TryRead(path + ".bak", out document);
             if (document != null)
             {
                 Debug.LogWarning("[Argon] Recovered settings from the backup file.");
+            }
+            else if (backupResult == ReadResult.Corrupt)
+            {
+                Quarantine(path + ".bak");
             }
         }
 
@@ -63,14 +78,23 @@ internal sealed class ArgonStore
 
         var store = new ArgonStore(path, document);
         store.Migrate();
-        if (!File.Exists(path) || !store._readOnly)
+        if (readOnly)
+        {
+            // Never overwrite a file we merely failed to open (locked, permissions, AV scan...).
+            store._readOnly = true;
+            Debug.LogWarning("[Argon] Settings file could not be opened; running read-only this session to avoid overwriting it.");
+        }
+
+        if (!store._readOnly)
         {
             store.Save();
+            store.Flush();
         }
 
         return store;
     }
 
+    /// <summary>Marks the document dirty; the write happens debounced from <see cref="Tick"/> or on <see cref="Flush"/>.</summary>
     internal void Save()
     {
         if (_readOnly)
@@ -78,42 +102,128 @@ internal sealed class ArgonStore
             return;
         }
 
-        var directory = Path.GetDirectoryName(_path);
-        if (string.IsNullOrEmpty(directory))
+        _dirty = true;
+        _dueAt = Time.unscaledTime + SaveDebounceSeconds;
+    }
+
+    /// <summary>Call once per frame. Writes are deferred while <paramref name="deferWrites"/> (active gameplay).</summary>
+    internal void Tick(bool deferWrites)
+    {
+        if (!_dirty || Time.unscaledTime < _dueAt || (deferWrites && Time.unscaledTime - _dueAt < MaxDeferSeconds))
         {
             return;
         }
 
-        var tempPath = _path + ".tmp";
-        var backupPath = _path + ".bak";
+        WriteNow(background: true);
+    }
 
+    /// <summary>Synchronously writes pending changes (shutdown, explicit save).</summary>
+    internal void Flush()
+    {
+        if (_dirty)
+        {
+            WriteNow(background: false);
+        }
+
+        lock (_writeLock)
+        {
+            // Waits for an in-flight background write to finish before returning.
+        }
+    }
+
+    // Serialize on the main thread (the document is not thread-safe), write off it.
+    // Sequence numbers stop an older background write from landing after a newer one.
+    private void WriteNow(bool background)
+    {
+        _dirty = false;
+        string json;
         try
         {
-            Directory.CreateDirectory(directory);
-            var json = JsonConvert.SerializeObject(Document, Formatting.Indented);
-            File.WriteAllText(tempPath, json);
-
-            if (!File.Exists(_path))
-            {
-                File.Move(tempPath, _path);
-                return;
-            }
-
-            try
-            {
-                File.Replace(tempPath, _path, backupPath, true);
-            }
-            catch
-            {
-                File.Copy(_path, backupPath, true);
-                File.Delete(_path);
-                File.Move(tempPath, _path);
-            }
+            json = JsonConvert.SerializeObject(Document, Formatting.Indented);
         }
         catch (Exception exception)
         {
-            Debug.LogError($"[Argon] Could not save settings at '{_path}': {exception}");
-            TryDelete(tempPath);
+            Debug.LogError($"[Argon] Could not serialize settings: {exception}");
+            return;
+        }
+
+        var sequence = ++_writeSequence;
+        if (background)
+        {
+            Task.Run(() => WriteFile(json, sequence));
+        }
+        else
+        {
+            WriteFile(json, sequence);
+        }
+    }
+
+    private void WriteFile(string json, int sequence)
+    {
+        lock (_writeLock)
+        {
+            if (sequence <= _writtenSequence)
+            {
+                return;
+            }
+
+            _writtenSequence = sequence;
+            var directory = Path.GetDirectoryName(_path);
+            if (string.IsNullOrEmpty(directory))
+            {
+                return;
+            }
+
+            var tempPath = _path + ".tmp";
+            var backupPath = _path + ".bak";
+            try
+            {
+                Directory.CreateDirectory(directory);
+                using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var writer = new StreamWriter(stream))
+                {
+                    writer.Write(json);
+                    writer.Flush();
+                    stream.Flush(true);
+                }
+
+                if (!File.Exists(_path))
+                {
+                    File.Move(tempPath, _path);
+                    return;
+                }
+
+                try
+                {
+                    File.Replace(tempPath, _path, backupPath, true);
+                }
+                catch
+                {
+                    // File.Replace is unsupported on some Mono/filesystem combos; keep a backup first.
+                    File.Copy(_path, backupPath, true);
+                    File.Copy(tempPath, _path, true);
+                    TryDelete(tempPath);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"[Argon] Could not save settings at '{_path}': {exception}");
+                TryDelete(tempPath);
+            }
+        }
+    }
+
+    private static void Quarantine(string path)
+    {
+        try
+        {
+            var target = path + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+            File.Copy(path, target, true);
+            Debug.LogWarning($"[Argon] Unreadable settings file preserved as '{target}'.");
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"[Argon] Could not preserve unreadable settings file '{path}': {exception.Message}");
         }
     }
 
@@ -309,27 +419,47 @@ internal sealed class ArgonStore
         return record;
     }
 
-    private static ArgonDocument? TryRead(string path)
+    private enum ReadResult
     {
+        Missing,
+        Ok,
+        Corrupt,
+        Unavailable,
+    }
+
+    private static ReadResult TryRead(string path, out ArgonDocument? document)
+    {
+        document = null;
         if (!File.Exists(path))
         {
-            return null;
+            return ReadResult.Missing;
+        }
+
+        string json;
+        try
+        {
+            json = File.ReadAllText(path);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"[Argon] Could not open settings file '{path}': {exception.Message}");
+            return ReadResult.Unavailable;
         }
 
         try
         {
-            var json = File.ReadAllText(path);
-            return JsonConvert.DeserializeObject<ArgonDocument>(json, new JsonSerializerSettings
+            document = JsonConvert.DeserializeObject<ArgonDocument>(json, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.None,
                 MissingMemberHandling = MissingMemberHandling.Ignore,
                 ObjectCreationHandling = ObjectCreationHandling.Replace,
             });
+            return document != null ? ReadResult.Ok : ReadResult.Corrupt;
         }
         catch (Exception exception)
         {
-            Debug.LogWarning($"[Argon] Could not read settings file '{path}': {exception.Message}");
-            return null;
+            Debug.LogWarning($"[Argon] Could not parse settings file '{path}': {exception.Message}");
+            return ReadResult.Corrupt;
         }
     }
 
@@ -398,6 +528,14 @@ internal sealed class ArgonStore
         return Mathf.Clamp(float.IsNaN(value) || float.IsInfinity(value) ? fallback : value, min, max);
     }
 
+    // Bindings are Unity KeyCodes, or NativeKeyBase + a SkyHook native key for keys Unity cannot name.
+    internal const int NativeKeyBase = 0x1000;
+
+    internal static bool IsValidBinding(int keyCode)
+    {
+        return keyCode >= NativeKeyBase ? keyCode <= NativeKeyBase + ushort.MaxValue : Enum.IsDefined(typeof(KeyCode), keyCode);
+    }
+
     private static void NormalizeBindingSets(Dictionary<int, KeyBindingData[]> bindings, Dictionary<int, KeyBindingData[]> defaults)
     {
         foreach (var pair in defaults)
@@ -411,7 +549,7 @@ internal sealed class ArgonStore
             for (var i = 0; i < values.Length; i++)
             {
                 values[i] ??= new KeyBindingData { KeyCode = pair.Value[i].KeyCode };
-                if (!Enum.IsDefined(typeof(KeyCode), values[i].KeyCode))
+                if (!IsValidBinding(values[i].KeyCode))
                 {
                     values[i].KeyCode = pair.Value[i].KeyCode;
                 }

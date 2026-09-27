@@ -9,11 +9,17 @@ namespace Argon.Integration;
 /// <summary>Small Harmony boundary for judgement and timing events; all HUD reads remain in GameStateSource.</summary>
 internal sealed class GameEventBridge : IDisposable
 {
-    private const string HarmonyId = "argon.game-events";
+    // Each bridge gets its own Harmony id so a late Dispose of a previous instance
+    // (deferred Object.Destroy during a same-frame off/on toggle) cannot unpatch the new one.
+    private static int _instanceCounter;
+    private readonly string _harmonyId;
     private readonly Harmony _harmony;
     private readonly HudDisplayPreferences _preferences;
+    private static HudDisplayPreferences? _activePreferences;
     private static float _timingTotal;
     private static int _timingSamples;
+    private static double _pendingTimingMs;
+    private static bool _pendingTimingValid;
 
     internal static string LastJudgement { get; private set; } = string.Empty;
     internal static float LastTimingMilliseconds { get; private set; }
@@ -26,27 +32,25 @@ internal sealed class GameEventBridge : IDisposable
     {
         _preferences = preferences;
         _activePreferences = preferences;
-        _harmony = new Harmony(HarmonyId);
-        Patch(typeof(scrMarginTracker), "AddHit", nameof(OnHit), typeof(HitMargin));
-        Patch(typeof(scrMistakesManager), "AddHit", nameof(OnHit), typeof(HitMargin));
-        Patch(typeof(scrMisc), "GetHitMarginInSec", nameof(OnTimingSeconds));
-        Patch(typeof(scrMisc), "GetHitMarginInDeg", nameof(OnTimingDegrees));
+        _harmonyId = "argon.game-events." + (++_instanceCounter);
+        _harmony = new Harmony(_harmonyId);
+        Patch(typeof(scrMarginTracker), "AddHit", nameof(OnHit), prefix: false, typeof(HitMargin));
+        // Failed floors bypass AddHit (AddHits(FailedFloor, n)); they still break the combo.
+        Patch(typeof(scrMarginTracker), "AddHits", nameof(OnHits), prefix: false, typeof(HitMargin), typeof(int));
+        Patch(typeof(scrMarginTracker), "RevertToLastCheckpoint", nameof(OnRevert), prefix: false);
+        Patch(typeof(scrPlanet), "SwitchChosen", nameof(OnSwitchChosen), prefix: true);
+        Patch(typeof(scnGame), "Play", nameof(OnRunBoundary), prefix: false);
+        Patch(typeof(scrController), "StartLoadingScene", nameof(OnRunBoundary), prefix: false);
     }
 
     public void Dispose()
     {
-        _harmony.UnpatchAll(HarmonyId);
+        _harmony.UnpatchAll(_harmonyId);
         if (ReferenceEquals(_activePreferences, _preferences))
         {
             _activePreferences = null;
+            ResetSession();
         }
-        LastJudgement = string.Empty;
-        LastTimingMilliseconds = 0f;
-        _timingTotal = 0f;
-        _timingSamples = 0;
-        Combo = 0;
-        PurePerfectCombo = 0;
-        ComboTier = 0;
     }
 
     internal static void ResetSession()
@@ -55,29 +59,29 @@ internal sealed class GameEventBridge : IDisposable
         LastTimingMilliseconds = 0f;
         _timingTotal = 0f;
         _timingSamples = 0;
+        _pendingTimingValid = false;
         Combo = 0;
         PurePerfectCombo = 0;
         ComboTier = 0;
     }
 
-    private void Patch(Type type, string originalName, string postfixName, params Type[] argumentTypes)
+    private void Patch(Type type, string originalName, string patchName, bool prefix, params Type[] argumentTypes)
     {
         try
         {
-            var original = type.GetMethod(
-                originalName,
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static,
-                null,
-                argumentTypes,
-                null);
-            var postfix = typeof(GameEventBridge).GetMethod(postfixName, BindingFlags.NonPublic | BindingFlags.Static);
-            if (original == null || postfix == null)
+            var original = argumentTypes.Length > 0
+                ? AccessTools.Method(type, originalName, argumentTypes)
+                : AccessTools.Method(type, originalName);
+            var patch = typeof(GameEventBridge).GetMethod(patchName, BindingFlags.NonPublic | BindingFlags.Static);
+            if (original == null || patch == null)
             {
                 Debug.LogWarning($"[Argon] Optional game event patch '{type.Name}.{originalName}' is unavailable.");
                 return;
             }
 
-            _harmony.Patch(original, postfix: new HarmonyMethod(postfix));
+            var method = new HarmonyMethod(patch);
+            if (prefix) _harmony.Patch(original, prefix: method);
+            else _harmony.Patch(original, postfix: method);
         }
         catch (Exception exception)
         {
@@ -85,100 +89,111 @@ internal sealed class GameEventBridge : IDisposable
         }
     }
 
-    private static void OnHit(object[] __args)
+    private static bool IsPlayerOne(scrMarginTracker tracker)
     {
-        if (__args == null || __args.Length == 0 || __args[0] == null)
-        {
-            return;
-        }
-
-        var judgement = __args[0].ToString() ?? string.Empty;
-        LastJudgement = judgement;
-        var isPurePerfect = judgement == "XPerfect" || judgement == "PurePerfect";
-        var isSignedPerfect = judgement == "PerfectMinus" || judgement == "PerfectPlus";
-        var isNearPerfect = judgement == "EarlyPerfect" || judgement == "LatePerfect";
-        var isAuto = judgement == "Auto";
-        var isNeutral = judgement == "Midspin";
-
-        if (isPurePerfect)
-        {
-            Combo++;
-            PurePerfectCombo++;
-            return;
-        }
-
-        if (isSignedPerfect && _activePreferences != null && _activePreferences.ComboMinimumTier >= 1)
-        {
-            Combo++;
-            PurePerfectCombo = 0;
-            ComboTier = Math.Max(ComboTier, 1);
-            return;
-        }
-
-        if (isNearPerfect && _activePreferences != null && _activePreferences.ComboMinimumTier >= 2)
-        {
-            Combo++;
-            PurePerfectCombo = 0;
-            ComboTier = 2;
-            return;
-        }
-
-        if (isAuto && _activePreferences != null && _activePreferences.CountAutoInCombo)
-        {
-            Combo++;
-            return;
-        }
-
-        if (!isAuto && !isNeutral)
-        {
-            Combo = 0;
-            PurePerfectCombo = 0;
-            ComboTier = 0;
-        }
+        var controller = scrController.instance;
+        var player = controller != null ? controller.playerOne : null;
+        // Unknown ownership (older builds): accept rather than drop every hit.
+        return player == null || player.marginTracker == null || ReferenceEquals(player.marginTracker, tracker);
     }
 
-    private static HudDisplayPreferences? _activePreferences;
+    private static void OnRunBoundary() => ResetSession();
 
-    private static void OnTimingSeconds(object[] __args)
+    private static void OnRevert(scrMarginTracker __instance)
     {
-        if (__args == null || __args.Length < 2 || __args[1] == null)
-        {
-            return;
-        }
-
-        RecordTiming(Convert.ToSingle(__args[1]) * 1000f);
+        if (!IsPlayerOne(__instance)) return;
+        Combo = 0;
+        PurePerfectCombo = 0;
+        ComboTier = 0;
+        _pendingTimingValid = false;
     }
 
-    private static void OnTimingDegrees(object[] __args)
+    private static void OnHits(scrMarginTracker __instance, HitMargin __0, int __1)
     {
-        if (__args == null || __args.Length < 7)
-        {
-            return;
-        }
+        if (__1 > 0) OnHit(__instance, __0);
+    }
 
+    // Same formula the game uses for its own ms readout, captured before SwitchChosen advances the planet.
+    private static void OnSwitchChosen(scrPlanet __instance)
+    {
+        _pendingTimingValid = false;
         try
         {
-            var hitAngle = Convert.ToSingle(__args[1]);
-            var referenceAngle = Convert.ToSingle(__args[2]);
-            var clockwise = Convert.ToBoolean(__args[3]);
-            var bpm = Math.Max(0.001f, Convert.ToSingle(__args[4]));
-            var pitch = Math.Max(0.001f, Convert.ToSingle(__args[5]));
-            var signedDegrees = (hitAngle - referenceAngle) * (clockwise ? 1f : -1f) * 57.29578f;
-            RecordTiming(signedDegrees / 180f / bpm / pitch * 60000f);
+            var controller = scrController.instance;
+            if (controller == null || !controller.gameworld || RDC.auto) return;
+            var system = __instance.planetarySystem;
+            var conductor = __instance.conductor;
+            if (system == null || conductor == null || conductor.song == null) return;
+            var rate = Math.PI * conductor.bpm * system.speed * conductor.song.pitch;
+            if (Math.Abs(rate) < 1e-9) return;
+            _pendingTimingMs = (__instance.cachedAngle - __instance.targetExitAngle) * (system.isCW ? 1 : -1) * 60000.0 / rate;
+            _pendingTimingValid = !double.IsNaN(_pendingTimingMs) && !double.IsInfinity(_pendingTimingMs);
         }
         catch
         {
-            // A future ADOFAI signature may change argument types; the judgement patch still works.
+            // Optional readout; judgements still flow through AddHit.
         }
     }
 
-    private static void RecordTiming(float milliseconds)
+    private static void OnHit(scrMarginTracker __instance, HitMargin __0)
     {
-        if (float.IsNaN(milliseconds) || float.IsInfinity(milliseconds))
+        if (!IsPlayerOne(__instance)) return;
+        var margin = __0;
+        var kind = HitKinds.Of(margin);
+        LastJudgement = margin.ToString();
+        ConsumeTiming(kind);
+
+        var preferences = _activePreferences;
+        switch (kind)
         {
-            return;
+            case HitKind.Perfect when HitKinds.IsPurePerfect(margin):
+                Combo++;
+                PurePerfectCombo++;
+                return;
+            case HitKind.Perfect when preferences != null && preferences.ComboMinimumTier >= 1:
+                Combo++;
+                PurePerfectCombo = 0;
+                ComboTier = Math.Max(ComboTier, 1);
+                return;
+            case HitKind.EarlyPerfect:
+            case HitKind.LatePerfect:
+                if (preferences != null && preferences.ComboMinimumTier >= 2)
+                {
+                    Combo++;
+                    PurePerfectCombo = 0;
+                    ComboTier = 2;
+                    return;
+                }
+
+                break;
+            case HitKind.Auto:
+                if (preferences != null && preferences.CountAutoInCombo) Combo++;
+                // Auto/midspin never break a combo.
+                return;
         }
 
+        Combo = 0;
+        PurePerfectCombo = 0;
+        ComboTier = 0;
+    }
+
+    private static void ConsumeTiming(HitKind kind)
+    {
+        if (!_pendingTimingValid) return;
+        _pendingTimingValid = false;
+        switch (kind)
+        {
+            case HitKind.EarlyPerfect:
+            case HitKind.Perfect:
+            case HitKind.LatePerfect:
+            case HitKind.VeryEarly:
+            case HitKind.VeryLate:
+                break;
+            default:
+                return; // misses, overloads, multipresses and auto have no meaningful offset
+        }
+
+        var milliseconds = (float)_pendingTimingMs;
         LastTimingMilliseconds = milliseconds;
         _timingTotal += milliseconds;
         _timingSamples++;

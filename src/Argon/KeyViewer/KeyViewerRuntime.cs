@@ -443,12 +443,12 @@ internal sealed class KeyViewerRuntime : IDisposable
             return binding.Label!;
         }
 
-        if (binding.KeyCode >= 0x1000)
+        if (binding.KeyCode >= ArgonStore.NativeKeyBase)
         {
-            var keyLabel = SkyHookKeyMapper.NativeKeyCodeToKeyLabel((ushort)(binding.KeyCode - 0x1000));
+            var keyLabel = SkyHookKeyMapper.NativeKeyCodeToKeyLabel((ushort)(binding.KeyCode - ArgonStore.NativeKeyBase));
             return keyLabel != KeyLabel.Unknown
                 ? keyLabel.ToString()
-                : "Key " + (binding.KeyCode - 0x1000).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                : "Key " + (binding.KeyCode - ArgonStore.NativeKeyBase).ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         var code = (KeyCode)binding.KeyCode;
@@ -544,7 +544,7 @@ internal sealed class KeyViewerRuntime : IDisposable
             var keyCode = binding != null ? (KeyCode)binding.KeyCode : KeyCode.None;
             var pressed = useGlobalInput
                 ? _hookPressed[slot.CountIndex]
-                : Application.isFocused && keyCode != KeyCode.None && (int)keyCode < 0x1000 && Input.GetKey(keyCode);
+                : Application.isFocused && keyCode != KeyCode.None && (int)keyCode < ArgonStore.NativeKeyBase && Input.GetKey(keyCode);
             if (pressed != _wasPressed[slot.CountIndex])
             {
                 _wasPressed[slot.CountIndex] = pressed;
@@ -565,7 +565,7 @@ internal sealed class KeyViewerRuntime : IDisposable
             var ghostCode = ghostBinding != null ? (KeyCode)ghostBinding.KeyCode : KeyCode.None;
             var ghostPressed = _settings.ShowGhostRain && (useGlobalInput
                 ? _hookGhostPressed[slot.CountIndex]
-                : Application.isFocused && ghostCode != KeyCode.None && (int)ghostCode < 0x1000 && Input.GetKey(ghostCode));
+                : Application.isFocused && ghostCode != KeyCode.None && (int)ghostCode < ArgonStore.NativeKeyBase && Input.GetKey(ghostCode));
             if (ghostPressed && !_wasGhostPressed[slot.CountIndex])
             {
                 SpawnTrail(slot.Rect, true, GetSlotNoteEffect(slot.Index, slot.IsFoot));
@@ -1005,7 +1005,7 @@ internal sealed class KeyViewerRuntime : IDisposable
         }
 
         var mapped = SkyHookKeyMapper.SkyHookKeyToUnityKey(input.Label);
-        binding.KeyCode = mapped != KeyCode.None ? (int)mapped : 0x1000 + input.Key;
+        binding.KeyCode = mapped != KeyCode.None ? (int)mapped : ArgonStore.NativeKeyBase + input.Key;
         binding.Label = mapped != KeyCode.None
             ? mapped.ToString()
             : input.Label != KeyLabel.Unknown ? input.Label.ToString() : "Key " + input.Key;
@@ -1019,7 +1019,7 @@ internal sealed class KeyViewerRuntime : IDisposable
     private static bool MatchesHookKey(KeyBindingData? binding, SkyHookEvent input)
     {
         if (binding == null || binding.KeyCode == (int)KeyCode.None) return false;
-        if (binding.KeyCode >= 0x1000) return input.Key == binding.KeyCode - 0x1000;
+        if (binding.KeyCode >= ArgonStore.NativeKeyBase) return input.Key == binding.KeyCode - ArgonStore.NativeKeyBase;
         var label = SkyHookKeyMapper.UnityKeyToSkyHookKey((KeyCode)binding.KeyCode);
         return label != KeyLabel.Unknown && input.Label == label;
     }

@@ -59,7 +59,14 @@ internal static class GameStateSource
     private static GameSnapshot _current;
     private static bool _sessionActive;
     private static string _sessionKey = string.Empty;
-    private static int _pseudoFloor = -1;
+    private static int _pseudoStart = -1;
+    private static int _pseudoEnd = -1;
+    private static float _pseudoBpm;
+    private static int _pseudoCount = 1;
+    private static object? _levelKeyFloors;
+    private static string _levelKeyName = string.Empty;
+    private static int _levelKeyTiles = -1;
+    private static string _levelKey = string.Empty;
     private static IList<scrFloor>? _checkpointFloorSource;
     private static string _checkpointLevelKey = string.Empty;
     private static readonly List<int> CheckpointSequences = new List<int>();
@@ -152,25 +159,27 @@ internal static class GameStateSource
                 pseudoCount = 1;
             }
 
-            var stateName = controller.state.ToString();
+            var state = controller.state;
+            var stateName = StateName(state);
             var levelName = string.IsNullOrWhiteSpace(controller.levelName)
                 ? (scrController.currentWorldString ?? "Unknown level")
                 : controller.levelName;
             var levelData = scnGame.instance != null ? scnGame.instance.levelData : null;
             var levelAuthor = levelData != null ? levelData.author : string.Empty;
-            var recordKey = CreateLevelKey(levelName, totalTiles, levelData);
+            var recordKey = GetLevelKey(floors, levelName, totalTiles, levelData);
             EnsureCheckpointCache(floors, recordKey);
-            var isActiveState = stateName == "Start" || stateName == "Countdown" || stateName == "PlayerControl";
+            var isActiveState = state == States.Start || state == States.Countdown || state == States.PlayerControl;
+            var isEndState = state == States.Fail || state == States.Fail2 || state == States.Won;
             if (isActiveState && (!_sessionActive || _sessionKey != recordKey))
             {
                 store.RecordAttempt(recordKey);
                 _sessionActive = true;
                 _sessionKey = recordKey;
-                _pseudoFloor = -1;
+                _pseudoStart = _pseudoEnd = -1;
                 GameEventBridge.ResetSession();
             }
 
-            if (stateName == "Fail" || stateName == "Fail2" || stateName == "Won")
+            if (isEndState)
             {
                 _sessionActive = false;
                 _sessionKey = string.Empty;
@@ -183,7 +192,7 @@ internal static class GameStateSource
             var potentialXAccuracy = manager != null ? Mathf.Max(xAccuracy, manager.maxPossibleXAcc) : xAccuracy;
             var hits = tracker != null ? tracker.playerHitMarginCount : sequence;
             var remaining = Math.Max(0, totalScorable - hits);
-            var potentialAccuracy = GetPotentialAccuracy(tracker, accuracy, sequence, totalTiles);
+            var potentialAccuracy = GetPotentialAccuracy(tracker, accuracy, hits, totalScorable);
             var xScore = tracker != null ? tracker.xScore : 0;
             var maxXScore = tracker != null ? tracker.maxXScore : 0;
             var perPerfectScore = GetPerfectXScore();
@@ -201,7 +210,7 @@ internal static class GameStateSource
 
             snapshot.InGame = true;
             snapshot.IsAuto = RDC.auto;
-            snapshot.IsDead = stateName == "Fail" || stateName == "Fail2" || (tracker != null && tracker.GetDeaths() > 0);
+            snapshot.IsDead = state == States.Fail || state == States.Fail2 || (tracker != null && tracker.GetDeaths() > 0);
             snapshot.LevelName = levelName;
             snapshot.LevelAuthor = levelAuthor ?? string.Empty;
             snapshot.State = stateName;
@@ -270,20 +279,22 @@ internal static class GameStateSource
             : string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}", safeSeconds / 60, safeSeconds % 60);
     }
 
-    private static float GetPotentialAccuracy(scrMarginTracker? tracker, float accuracy, int sequence, int tileCount)
+    // The game computes percentAcc = accurate / counted + perfect * 0.0001; invert it to recover the
+    // counted-hit total, then assume every remaining player-hit tile is a perfect.
+    private static float GetPotentialAccuracy(scrMarginTracker? tracker, float accuracy, int hitsSoFar, int totalScorable)
     {
-        if (tracker == null || tracker.hitMarginsCount == null || tracker.hitMarginsCount.Length <= 14)
+        if (tracker == null || tracker.hitMarginsCount == null)
         {
             return accuracy;
         }
 
-        var hits = tracker.hitMarginsCount;
-        var perfect = hits[3] + hits[4] + hits[5] + hits[12] + hits[14];
-        var accurate = perfect + hits[2] + hits[6];
-        var remaining = Math.Max(tileCount - 1 - sequence, 0);
+        var counts = tracker.hitMarginsCount;
+        var perfect = HitKinds.Count(counts, HitKind.Perfect);
+        var accurate = perfect + HitKinds.Count(counts, HitKind.EarlyPerfect) + HitKinds.Count(counts, HitKind.LatePerfect);
+        var remaining = Math.Max(totalScorable - hitsSoFar, 0);
         var rate = accuracy - perfect * 0.0001f;
         var count = accurate == 0 || rate <= 0f || float.IsNaN(rate)
-            ? sequence
+            ? hitsSoFar
             : Mathf.RoundToInt(accurate / rate);
         count = Math.Max(count, accurate);
         var total = count + remaining;
@@ -319,14 +330,25 @@ internal static class GameStateSource
         return reached;
     }
 
-    private static string CreateLevelKey(string levelName, int tileCount, ADOFAI.LevelData? levelData)
+    // Cached per loaded level: LevelData.Hash logs an error every call when metadata is empty,
+    // and hashing every frame is wasted work.
+    private static string GetLevelKey(object floors, string levelName, int tileCount, ADOFAI.LevelData? levelData)
     {
+        if (ReferenceEquals(_levelKeyFloors, floors) && _levelKeyTiles == tileCount && _levelKeyName == levelName)
+        {
+            return _levelKey;
+        }
+
+        _levelKeyFloors = floors;
+        _levelKeyTiles = tileCount;
+        _levelKeyName = levelName;
         var identity = levelName.Trim().ToLowerInvariant();
         try
         {
-            if (levelData != null && !string.IsNullOrWhiteSpace(levelData.Hash))
+            if (levelData != null && !(string.IsNullOrWhiteSpace(levelData.author) && string.IsNullOrWhiteSpace(levelData.artist) && string.IsNullOrWhiteSpace(levelData.song)))
             {
-                identity = levelData.Hash.Trim().ToLowerInvariant();
+                var hash = levelData.Hash;
+                if (!string.IsNullOrWhiteSpace(hash)) identity = hash.Trim().ToLowerInvariant();
             }
         }
         catch
@@ -334,16 +356,39 @@ internal static class GameStateSource
             // Some built-in levels do not expose enough metadata for a content hash.
         }
 
-        return Hash128.Compute(identity + "|" + tileCount).ToString();
+        _levelKey = Hash128.Compute(identity + "|" + tileCount).ToString();
+        return _levelKey;
+    }
+
+    private static string StateName(States state)
+    {
+        switch (state)
+        {
+            case States.Start: return "Start";
+            case States.Countdown: return "Countdown";
+            case States.PlayerControl: return "PlayerControl";
+            case States.Fail: return "Fail";
+            case States.Fail2: return "Fail2";
+            case States.Won: return "Won";
+            default: return state.ToString();
+        }
     }
 
     private static bool TryGetPseudoBpm(scrFloor? currentFloor, float baseBpm, float pitch, out float bpm, out int count)
     {
         bpm = 0f;
         count = 1;
-        if (currentFloor == null || baseBpm < 200f || scnGame.instance == null || currentFloor.seqID <= _pseudoFloor)
+        if (currentFloor == null || baseBpm < 200f || scnGame.instance == null)
         {
             return false;
+        }
+
+        // Inside a group already measured: keep showing that group's pseudo BPM until it ends.
+        if (currentFloor.seqID >= _pseudoStart && currentFloor.seqID <= _pseudoEnd)
+        {
+            bpm = _pseudoBpm;
+            count = _pseudoCount;
+            return true;
         }
 
         var maximumAngle = baseBpm < 400f ? 0.5236d : 1.0472d;
@@ -398,8 +443,12 @@ internal static class GameStateSource
         }
 
         bpm = (float)(60d / interval * pitch);
-        _pseudoFloor = floor.seqID;
-        return bpm > 0f && !float.IsNaN(bpm) && !float.IsInfinity(bpm);
+        if (!(bpm > 0f) || float.IsInfinity(bpm)) return false;
+        _pseudoStart = currentFloor.seqID;
+        _pseudoEnd = floor.seqID;
+        _pseudoBpm = bpm;
+        _pseudoCount = count;
+        return true;
     }
 
     private static int CountNearbyNinetyDegreeFloors(scrFloor currentFloor)

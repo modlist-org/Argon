@@ -2147,7 +2147,7 @@ internal sealed class ArgonHost : MonoBehaviour
             value => preferences.Hud.FontSize = value, "general.font-size", "F0");
         var helpCard = CreateSettingsCard(page, "도움말 및 저장", "설정 창은 Ctrl + Shift + O, HUD 배치 편집은 Esc 키로 닫을 수 있습니다.");
         AddSection(helpCard, "설정 파일", System.IO.Path.Combine(Application.persistentDataPath, "Argon", "config.json"));
-        Track(O5Factory.Button(helpCard, () => _store.Save(), "설정 지금 저장", "general.save"));
+        Track(O5Factory.Button(helpCard, () => { _store.Save(); _store.Flush(); }, "설정 지금 저장", "general.save"));
     }
 
     private RectTransform CreateEditorPage(string id)
@@ -2527,6 +2527,7 @@ internal sealed class ArgonHost : MonoBehaviour
         }
         RefreshKeyPreview();
         _appearanceCustomizer?.Tick();
+        _store?.Tick(GameStateSource.Current.InGame && GameStateSource.Current.State == "PlayerControl");
         O5Object.TickAll();
         O5Tooltip.Tick();
         O5ShortcutManager.HandleUpdate();
@@ -2597,8 +2598,14 @@ internal sealed class ArgonHost : MonoBehaviour
         DisposeUi();
     }
 
+    private bool _uiDisposed;
+
     private void DisposeUi()
     {
+        // Runs synchronously from Destroy(); the deferred OnDestroy must not tear down a newer host's
+        // shortcut, patches or API binding after a same-frame off/on toggle.
+        if (_uiDisposed) return;
+        _uiDisposed = true;
         if (_editingHud)
         {
             _hudRuntime?.SetEditMode(false);
@@ -2620,7 +2627,7 @@ internal sealed class ArgonHost : MonoBehaviour
         _keyViewer = null;
         _hudRuntime?.Dispose();
         _hudRuntime = null;
-        _store?.Save();
+        _store?.Flush();
         _store = null;
         _window = null;
         if (_argonTheme != null && ReferenceEquals(O5Boot.Theme, _argonTheme) && _previousTheme != null)
@@ -2719,7 +2726,9 @@ internal sealed class ArgonHost : MonoBehaviour
 
     internal static void Destroy(ArgonHost host)
     {
-        if (host != null) Object.Destroy(host.gameObject);
+        if (host == null) return;
+        host.DisposeUi();
+        Object.Destroy(host.gameObject);
     }
 
     private sealed class KeyBindingChoice
